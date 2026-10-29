@@ -18,29 +18,24 @@ function SimulatedPage({ page }: { page: number }) {
     );
   }
   return (
-    <div className="aspect-[1/1.35] w-full bg-white p-8 text-slate-900 flex flex-col justify-between">
-      <div>
-        <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-2 text-xs">
-          <span className="font-bold text-blue-900">ClaimLoom Enterprise Brochure</span>
-          <span className="text-slate-400">Page 1</span>
-        </div>
-        <h3 className="mb-3 text-lg font-bold">Marketing Governance</h3>
-        <p className="mb-4 text-xs text-slate-700">
-          Get our ClaimLoom software for <span className="font-bold">guaranteed 100% results!</span>
-        </p>
-        <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs font-bold">
-          Pro Plan costs $15/month
-        </div>
+    <div className="relative aspect-[1/1.35] w-full bg-white text-slate-900">
+      <div className="absolute inset-x-[12%] top-[5%] flex items-center justify-between border-b border-slate-200 pb-2 text-xs">
+        <span className="font-bold text-blue-900">ClaimLoom Enterprise Brochure</span>
+        <span className="text-slate-400">Page 1</span>
       </div>
-      
-      {/* THIS WAS MISSING: The low-contrast footer text the bounding box is targeting */}
-      <div className="border-t border-slate-200 pt-2 text-[10px] text-slate-400">
+      <h3 className="absolute left-[12%] top-[12%] text-lg font-bold">Marketing Governance</h3>
+      <p className="absolute left-[12%] top-[24%] w-[66%] text-xs text-slate-700">
+        Get our ClaimLoom software for <span className="font-bold">guaranteed 100% results!</span>
+      </p>
+      <div className="absolute left-[12%] top-[44%] w-[40%] rounded border border-slate-200 bg-slate-50 p-3 text-xs font-bold">
+        Pro Plan costs $15/month
+      </div>
+      <div className="absolute left-[12%] top-[80%] w-[76%] text-[10px] text-slate-400">
         Footer Disclaimer: 7.5pt font, Contrast 2.8:1
       </div>
     </div>
   );
 }
-
 
 interface Props {
   scanResult: ScanResponse | null;

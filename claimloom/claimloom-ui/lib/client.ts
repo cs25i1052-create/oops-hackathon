@@ -22,6 +22,7 @@ export async function pingHealth(ms = 6000): Promise<boolean> {
   }
 }
 
+/** Polls /health while a free-tier host (Render) wakes up. */
 export async function waitForEngine(isCancelled: () => boolean, attempts = 10): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
     if (isCancelled()) return false;
@@ -39,6 +40,7 @@ function isTransient(e: unknown): boolean {
   return false;
 }
 
+/** Retries once, but only while the engine is still waking up. */
 export async function withColdStartRetry<T>(
   fn: () => Promise<T>,
   onRetry?: () => void,

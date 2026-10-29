@@ -26,6 +26,7 @@ const MAX_UPLOAD = 5 * 1024 * 1024;
 const MIN_CHARS = 10;
 const DEMO_SIGNATURE =
   "ed25519:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+const EMPTY_ISSUES: Issue[] = [];
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "studio", label: "Studio" },
@@ -76,6 +77,7 @@ export default function ClaimLoomWorkspace() {
   const [currentPage, setCurrentPage] = useState(1);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [fixesPending, setFixesPending] = useState(false);
 
   const [showCert, setShowCert] = useState(false);
   const [signature, setSignature] = useState<{ value: string; live: boolean }>({
@@ -111,6 +113,7 @@ export default function ClaimLoomWorkspace() {
   }, []);
 
   const adopt = useCallback((resp: ScanResponse, origin: Origin) => {
+    setFixesPending(false);
     setScanResult(resp);
     setScanOrigin(origin);
     setSelectedIssueId(resp.issues[0]?.id ?? null);
@@ -127,7 +130,7 @@ export default function ClaimLoomWorkspace() {
 
   useEffect(() => {
     const savedRole = localStorage.getItem("cl_role");
-    if (savedRole === "Creator" || savedRole === "Reviewer" || savedRole === "Admin") setRole(savedRole);
+    if (savedRole === "Creator" || savedRole === "Reviewer" || savedRole === "Admin") setRole(savedRole as Role);
     const savedWs = localStorage.getItem("cl_workspace");
     if (savedWs === "default" || savedWs === "custom") setWorkspaceId(savedWs);
   }, []);
@@ -146,6 +149,7 @@ export default function ClaimLoomWorkspace() {
     };
   }, []);
 
+  // Patch 1: Fast restore with single cold-start retry
   useEffect(() => {
     const scanId = new URLSearchParams(window.location.search).get("scan_id");
     if (!scanId) return;
@@ -164,7 +168,11 @@ export default function ClaimLoomWorkspace() {
       }
     };
 
-    fetchScan(scanId)
+    withColdStartRetry(
+      () => fetchScan(scanId),
+      undefined,
+      () => wakingRef.current
+    )
       .then((parsed) => {
         if (!cancelled) applyRestored(parsed, "live");
       })
@@ -179,6 +187,7 @@ export default function ClaimLoomWorkspace() {
           setErrorBanner("Could not restore the saved scan. Run a new audit.");
         }
       });
+
     return () => {
       cancelled = true;
     };
@@ -195,36 +204,36 @@ export default function ClaimLoomWorkspace() {
   };
 
   const handleRunTextAudit = async () => {
+    if (isScanning) return;
     setErrorBanner(null);
-    const trimmed = editorText.trim();
-    if (trimmed.length < MIN_CHARS) {
+
+    if (editorText.trim().length < MIN_CHARS) {
       setErrorBanner(`Enter at least ${MIN_CHARS} characters of copy to run an audit.`);
       return;
     }
-    if (trimmed.length > MAX_CHARS) {
-      setErrorBanner("The draft is over the 8,000 character limit. Shorten it and try again.");
+    if (editorText.trim().length > MAX_CHARS) {
+      setErrorBanner(`The draft is over the ${MAX_CHARS.toLocaleString()} character limit.`);
       return;
     }
-    if (isScanning) return;
 
     const id = ++requestId.current;
     setIsScanning(true);
     setScanStep("Auditing copy and verifying claims...");
     try {
       const live = await withColdStartRetry(
-        () => runTextScan(trimmed, channel, workspaceId),
+        () => runTextScan(editorText, channel, workspaceId),
         () => setScanStep("Waking the engine, retrying..."),
         () => wakingRef.current
       );
       if (id !== requestId.current) return;
-      setOriginalText(trimmed);
+      setOriginalText(editorText);
       adopt(live, "live");
       showToast("Audit complete.");
     } catch (e) {
       if (id !== requestId.current) return;
       setErrorBanner(`Live audit failed: ${errMsg(e)}. Showing a demo result instead.`);
-      setOriginalText(trimmed);
-      adopt(buildOfflineTextScan(trimmed), "fallback");
+      setOriginalText(editorText);
+      adopt(buildOfflineTextScan(editorText), "fallback");
     } finally {
       if (id === requestId.current) {
         setIsScanning(false);
@@ -311,21 +320,25 @@ export default function ClaimLoomWorkspace() {
     [adopt, showToast]
   );
 
+  // Patch 3: Track pending fixes on live scans so sign-off requires re-audit
   const handleAcceptFix = useCallback(
     (issue: Issue) => {
       const current = scanRef.current;
       if (!current) return;
+      if (originRef.current === "live") setFixesPending(true);
 
       const text = editorRef.current;
       const range = resolveRange(text, issue);
       let nextText: string | null = null;
+
       if (range) {
         nextText = text.slice(0, range.start) + issue.suggested_fix + text.slice(range.end);
       } else if (issue.flagged_text && text.includes(issue.flagged_text)) {
         nextText = text.replaceAll(issue.flagged_text, issue.suggested_fix);
       }
+
       if (nextText !== null) {
-        editorRef.current = nextText; 
+        editorRef.current = nextText;
         setEditorText(nextText);
       }
 
@@ -436,6 +449,7 @@ export default function ClaimLoomWorkspace() {
     requestId.current++;
     setIsScanning(false);
     setScanStep("");
+    setFixesPending(false);
     setKbVersion(1);
     setRulesVersion(1);
     setKbChunks(INITIAL_KB_CHUNKS);
@@ -454,11 +468,16 @@ export default function ClaimLoomWorkspace() {
     showToast("Workspace reset.");
   };
 
-  const issues = scanResult?.issues ?? [];
+  const issues = scanResult?.issues ?? EMPTY_ISSUES;
   const highCount = issues.filter((i) => i.severity === "High").length;
   const isApproved = scanResult?.status === "approved";
   const canApprove =
-    Boolean(scanResult) && role !== "Creator" && highCount === 0 && !scanResult?.reaudit?.needed && !isApproved;
+    Boolean(scanResult) &&
+    role !== "Creator" &&
+    highCount === 0 &&
+    !scanResult?.reaudit?.needed &&
+    !isApproved &&
+    !fixesPending;
   const isLive = engineOnline && scanOrigin !== "fallback";
 
   let signoffHint = "Run an audit to enable approval.";
@@ -467,6 +486,8 @@ export default function ClaimLoomWorkspace() {
     else if (scanResult.reaudit?.needed) signoffHint = "A knowledge update requires a re-audit first.";
     else if (highCount > 0)
       signoffHint = `Resolve ${highCount} high-severity ${highCount === 1 ? "issue" : "issues"} to unlock approval.`;
+    else if (fixesPending)
+      signoffHint = "Fixes were applied here only. Re-run the audit (or upload the corrected file) to verify before signing.";
     else if (role === "Creator") signoffHint = "No blockers left. Switch to Reviewer or Admin to sign off.";
     else signoffHint = "Ready to sign. This creates a tamper-evident certificate.";
   }

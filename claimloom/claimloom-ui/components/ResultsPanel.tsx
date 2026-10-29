@@ -74,7 +74,7 @@ const IssueCard = memo(function IssueCard({ issue, selected, onSelect, onLocate,
           <p>{issue.explanation}</p>
           <p className="text-slate-500">
             Rule source: {issue.source_ref}. Found by {issue.detected_by.replace(/_/g, " ")} with{" "}
-            {Math.round(issue.confidence * 100)}% confidence.
+            {Math.round((issue.confidence ?? 1) * 100)}% confidence.
           </p>
           {issue.evidence && (
             <p className="border-t border-slate-200 pt-2 text-slate-500">

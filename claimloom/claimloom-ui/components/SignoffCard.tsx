@@ -24,7 +24,7 @@ function SignoffCard({ role, hint, canApprove, isApproved, onApprove, onViewCert
   const [comments, setComments] = useState<Comment[]>([
     {
       id: "c1",
-      author: "Senior Legal Reviewer",
+      author: "Sample Senior Legal Reviewer",
       text: "Please update the Pro Plan price to $29/month and remove the absolute guarantee before final sign-off.",
       time: "5 mins ago",
     },
