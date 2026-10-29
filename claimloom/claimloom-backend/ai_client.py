@@ -23,11 +23,11 @@ import httpx
 
 PROVIDERS = [
     {"name": "groq", "base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY",
-     "models_env": "GROQ_MODELS", "default_models": "llama-3.3-70b-versatile,llama-3.1-8b-instant,openai/gpt-oss-20b,openai/gpt-oss-120b,qwen/qwen3.6-27b",
+     "models_env": "GROQ_MODELS", "default_models": "openai/gpt-oss-120b,qwen/qwen3.6-27b,openai/gpt-oss-20b",
      "vision_env": None, "default_vision": ""},
     {"name": "gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "key_env": "GEMINI_API_KEY",
-     "models_env": "GEMINI_MODELS", "default_models": "gemini-2.5-flash,gemini-2.0-flash",
-     "vision_env": "GEMINI_VISION_MODELS", "default_vision": "gemini-2.5-flash,gemini-2.0-flash"},
+     "models_env": "GEMINI_MODELS", "default_models": "gemini-3.5-flash,gemini-3.1-flash-lite",
+     "vision_env": "GEMINI_VISION_MODELS", "default_vision": "gemini-3.5-flash"},
     {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1", "key_env": "OPENROUTER_API_KEY",
      "models_env": "OPENROUTER_MODELS", "default_models": "openrouter/free",
      "vision_env": "OPENROUTER_VISION_MODELS", "default_vision": "openrouter/free"},
@@ -89,11 +89,6 @@ def _configured(p: dict, vision: bool = False) -> Optional[dict]:
     else:
         raw = os.getenv(p["models_env"], p["default_models"])
     models = [m.strip() for m in raw.split(",") if m.strip()]
-    if not vision and p["name"] == "groq":
-        # This small instant model is the lowest-latency Groq route; keep it
-        # ahead of a legacy .env override that starts with a larger model.
-        fast_model = "llama-3.1-8b-instant"
-        models = [fast_model] + [model for model in models if model != fast_model]
     if not models:
         return None
     return {**p, "key": key, "base_url": base.rstrip("/"), "models": models}
