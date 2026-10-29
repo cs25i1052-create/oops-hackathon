@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ClaimLoom Copy Check</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand-mark">CL</div>
+        <div><h1>ClaimLoom</h1><p>Pre-publication copy check</p></div>
+      </header>
+      <label for="api">Backend URL</label>
+      <input id="api" type="url" placeholder="https://your-service.onrender.com">
+      <label for="channel">Channel</label>
+      <select id="channel">
+        <option value="general">General</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="instagram">Instagram</option>
+        <option value="billboard">Billboard</option>
+        <option value="email">Email</option>
+      </select>
+      <button id="scan">Scan selected text</button>
+      <p id="status" role="status">Select copy on a page, then run a scan.</p>
+      <section id="results" aria-live="polite"></section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

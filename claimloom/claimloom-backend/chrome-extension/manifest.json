@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "ClaimLoom Copy Check",
+  "version": "1.0.0",
+  "description": "Check selected page copy against your ClaimLoom brand rules.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://*.onrender.com/*", "http://localhost:8000/*"],
+  "action": {
+    "default_title": "Scan selected copy with ClaimLoom",
+    "default_popup": "popup.html"
+  }
+}

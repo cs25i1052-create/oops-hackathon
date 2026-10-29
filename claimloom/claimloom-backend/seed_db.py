@@ -203,6 +203,11 @@ def seed_neon_database():
     cur.execute("ALTER TABLE scans ADD COLUMN IF NOT EXISTS input_type VARCHAR(10) DEFAULT 'text';")
     cur.execute("ALTER TABLE scans ADD COLUMN IF NOT EXISTS payload JSONB;")
 
+    # Round 3 scan storage may have been created before reaudit explanations
+    # were persisted. Upgrade existing installations without requiring a
+    # destructive table rebuild.
+    cur.execute("ALTER TABLE IF EXISTS public.scan_documents ADD COLUMN IF NOT EXISTS reaudit_reason TEXT;")
+
     cur.execute("""CREATE TABLE IF NOT EXISTS flag_events (
         event_id SERIAL PRIMARY KEY, scan_id VARCHAR(50), rule_id INT, action VARCHAR(20),
         reason TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")

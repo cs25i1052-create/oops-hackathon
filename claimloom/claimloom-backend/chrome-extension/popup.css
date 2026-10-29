@@ -1,0 +1,17 @@
+:root { color-scheme: light; font: 14px/1.45 system-ui, -apple-system, sans-serif; color: #172033; background: #f8fafc; }
+body { margin: 0; width: 360px; }
+main { padding: 18px; }
+header { display: flex; gap: 11px; align-items: center; margin-bottom: 20px; }
+.brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: white; background: #1e3a8a; font-weight: 800; }
+h1, p { margin: 0; }
+h1 { font-size: 17px; }
+header p, #status { color: #64748b; font-size: 12px; }
+label { display: block; margin: 12px 0 5px; font-weight: 650; font-size: 12px; }
+input, select { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: white; padding: 9px; color: inherit; }
+button { width: 100%; margin: 16px 0 10px; border: 0; border-radius: 8px; padding: 10px; background: #1e3a8a; color: white; font-weight: 700; cursor: pointer; }
+button:disabled { opacity: .55; cursor: wait; }
+#status { min-height: 18px; }
+.issue { margin-top: 9px; padding: 10px; border-radius: 8px; border: 1px solid #fecaca; background: #fff; }
+.issue strong { display: block; color: #991b1b; margin-bottom: 3px; }
+.issue span { color: #475569; }
+.score { margin-top: 8px; font-weight: 750; }

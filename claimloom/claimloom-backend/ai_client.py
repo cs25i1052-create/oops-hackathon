@@ -23,11 +23,11 @@ import httpx
 
 PROVIDERS = [
     {"name": "groq", "base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY",
-     "models_env": "GROQ_MODELS", "default_models": "openai/gpt-oss-120b,qwen/qwen3.6-27b,openai/gpt-oss-20b",
+     "models_env": "GROQ_MODELS", "default_models": "llama-3.3-70b-versatile,llama-3.1-8b-instant,openai/gpt-oss-20b,openai/gpt-oss-120b,qwen/qwen3.6-27b",
      "vision_env": None, "default_vision": ""},
     {"name": "gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "key_env": "GEMINI_API_KEY",
-     "models_env": "GEMINI_MODELS", "default_models": "gemini-3.5-flash,gemini-3.1-flash-lite",
-     "vision_env": "GEMINI_VISION_MODELS", "default_vision": "gemini-3.5-flash"},
+     "models_env": "GEMINI_MODELS", "default_models": "gemini-2.5-flash,gemini-2.0-flash",
+     "vision_env": "GEMINI_VISION_MODELS", "default_vision": "gemini-2.5-flash,gemini-2.0-flash"},
     {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1", "key_env": "OPENROUTER_API_KEY",
      "models_env": "OPENROUTER_MODELS", "default_models": "openrouter/free",
      "vision_env": "OPENROUTER_VISION_MODELS", "default_vision": "openrouter/free"},
@@ -36,7 +36,7 @@ PROVIDERS = [
      "vision_env": "CUSTOM_VISION_MODELS", "default_vision": ""},
 ]
 
-PER_CALL_TIMEOUT = float(os.getenv("AI_CALL_TIMEOUT", "15"))
+PER_CALL_TIMEOUT = float(os.getenv("AI_CALL_TIMEOUT", "4.5"))
 TOTAL_BUDGET = float(os.getenv("AI_TOTAL_TIMEOUT", "30"))
 NUDGE = "\n\nIMPORTANT: your previous reply was not valid JSON. Reply with ONE valid JSON object only. No markdown, no commentary."
 
@@ -45,6 +45,8 @@ _GOOD = re.compile(r"(gpt-oss|llama|qwen|gemini|mistral|deepseek|gemma)", re.I)
 _BAD = re.compile(r"(whisper|tts|guard|embed|image|audio|live|moderation|safeguard|orpheus|robotics|imagen|veo|omni)", re.I)
 
 _cooldown: Dict[Tuple[str, str], float] = {}
+_successful_model_by_provider: Dict[str, str] = {}
+_successful_provider: Optional[str] = None
 
 
 class AIUnavailable(Exception):
@@ -52,13 +54,19 @@ class AIUnavailable(Exception):
 
 
 # ----------------------------------------------------------------- tiny HTTP wrappers (tests replace these)
+_http_client = httpx.Client(
+    timeout=PER_CALL_TIMEOUT,
+    limits=httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=60.0),
+)
+
+
 def _post(url: str, headers: dict, payload: dict, timeout: float) -> Tuple[int, str]:
-    r = httpx.post(url, headers=headers, json=payload, timeout=timeout)
+    r = _http_client.post(url, headers=headers, json=payload, timeout=timeout)
     return r.status_code, r.text
 
 
 def _get(url: str, headers: dict, timeout: float) -> Tuple[int, str]:
-    r = httpx.get(url, headers=headers, timeout=timeout)
+    r = _http_client.get(url, headers=headers, timeout=timeout)
     return r.status_code, r.text
 
 
@@ -81,6 +89,11 @@ def _configured(p: dict, vision: bool = False) -> Optional[dict]:
     else:
         raw = os.getenv(p["models_env"], p["default_models"])
     models = [m.strip() for m in raw.split(",") if m.strip()]
+    if not vision and p["name"] == "groq":
+        # This small instant model is the lowest-latency Groq route; keep it
+        # ahead of a legacy .env override that starts with a larger model.
+        fast_model = "llama-3.1-8b-instant"
+        models = [fast_model] + [model for model in models if model != fast_model]
     if not models:
         return None
     return {**p, "key": key, "base_url": base.rstrip("/"), "models": models}
@@ -94,7 +107,12 @@ def _ordered_providers(vision: bool = False) -> List[dict]:
         if name in by_name:
             cfg = _configured(by_name[name], vision)
             if cfg:
+                successful_model = _successful_model_by_provider.get(name) if not vision else None
+                if successful_model and successful_model in cfg["models"]:
+                    cfg["models"] = [successful_model] + [m for m in cfg["models"] if m != successful_model]
                 result.append(cfg)
+    if not vision and _successful_provider:
+        result.sort(key=lambda provider: provider["name"] != _successful_provider)
     return result
 
 
@@ -189,7 +207,8 @@ def _apply_cooldown(p: dict, model: str, kind: str) -> None:
 def _attempt(p: dict, model: str, system: str, user: str, image, max_tokens: int, deadline: float, errors: List[str]):
     """One model, with one JSON-repair retry. Returns (parsed_json | None, kind)."""
     for attempt in range(2):
-        timeout = min(PER_CALL_TIMEOUT, deadline - time.monotonic())
+        call_limit = max(PER_CALL_TIMEOUT, 12.0) if image is not None else PER_CALL_TIMEOUT
+        timeout = min(call_limit, deadline - time.monotonic())
         if timeout < 1:
             errors.append("time budget used up")
             return None, "timeout"
@@ -236,6 +255,7 @@ def complete_json(system: str, user: str, image: Optional[Tuple[bytes, str]] = N
     if not providers:
         raise AIUnavailable("no AI API key configured")
     errors: List[str] = []
+    global _successful_provider
     for p in providers:
         if _on_cooldown(p["name"], "*"):
             errors.append(f"{p['name']}: skipped (cooling down)")
@@ -247,6 +267,9 @@ def complete_json(system: str, user: str, image: Optional[Tuple[bytes, str]] = N
                 raise AIUnavailable("; ".join(errors[-6:]) or "time budget used up")
             data, kind = _attempt(p, model, system, user, image, max_tokens, deadline, errors)
             if kind == "ok":
+                _successful_model_by_provider[p["name"]] = model
+                if image is None:
+                    _successful_provider = p["name"]
                 return data, f"{p['name']}/{model}"
             if kind == "auth":
                 break  # bad key: no point trying this provider's other models
