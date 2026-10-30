@@ -13,7 +13,7 @@ import CertificateModal from "../components/CertificateModal";
 import { Role, Tab, btnGhost, selectCls } from "../lib/ui";
 
 export default function ClaimLoomWorkspace() {
-  const { TABS, activeTab, setActiveTab, role, workspaceId, channel, setChannel, isLive, isWakingUp, kbVersion, rulesVersion, editorText, setEditorText, originalText, isScanning, scanStep, scanResult, setScanResult, scanOrigin, selectedIssueId, setSelectedIssueId, currentPage, setCurrentPage, errorBanner, setErrorBanner, toastMessage, showCert, signature, certificatePublicKey, kbChunks, affectedScansCount, rules, fileInputRef, issues, canApprove, isApproved, signoffHint, handleReaudit, handleWorkspaceChange, handleRoleChange, handleResetDemo, handleFileUpload, handleRunTextAudit, handleUploadClick, loadSample, handleApprove, openCert, closeCert, handleActivityReaudit, handleLocate, handleAcceptFix, handleSimulatePriceSync, setRules, setKbChunks, setRulesVersion, setKbVersion, setAffectedScansCount, scanRef, fetchScan } = useClaimLoomWorkspace();
+  const { TABS, activeTab, setActiveTab, role, workspaceId, channel, setChannel, isLive, isWakingUp, kbVersion, rulesVersion, editorText, setEditorText, originalText, isScanning, scanStep, scanResult, setScanResult, scanOrigin, selectedIssueId, setSelectedIssueId, currentPage, setCurrentPage, errorBanner, setErrorBanner, toastMessage, showCert, signature, certificatePublicKey, kbChunks, affectedScansCount, rules, fileInputRef, issues, canApprove, isApproved, signoffHint, handleReaudit, handleWorkspaceChange, handleRoleChange, handleResetDemo, handleFileUpload, handleRunTextAudit, handleUploadClick, loadSample, handleApprove, openCert, closeCert, handleActivityReaudit, handleLocate, handleAcceptFix, handleOverride, handleSimulatePriceSync, setRules, setKbChunks, setRulesVersion, setKbVersion, setAffectedScansCount, scanRef, fetchScan } = useClaimLoomWorkspace();
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       {isWakingUp && <div role="status" className="bg-amber-50 px-6 py-1.5 text-center text-xs font-medium text-amber-900">Waking the audit engine. You can keep working while it connects.</div>}
@@ -71,7 +71,7 @@ export default function ClaimLoomWorkspace() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.png,.jpg,.jpeg,.webp"
+        accept=".pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"
         onChange={handleFileUpload}
         className="hidden"
       />
@@ -115,9 +115,9 @@ export default function ClaimLoomWorkspace() {
                 onSelect={setSelectedIssueId}
                 onLocate={handleLocate}
                 onAccept={handleAcceptFix}
+                onOverride={handleOverride}
                 onSample={loadSample}
-              />
-            </div>
+              />            </div>
           </div>
         </div>
 
@@ -149,7 +149,7 @@ export default function ClaimLoomWorkspace() {
         </div>
 
         <div className={activeTab === "radar" ? "block" : "hidden"}>
-          <RadarTab />
+          <RadarTab workspaceId={workspaceId} />
         </div>
       </main>
 

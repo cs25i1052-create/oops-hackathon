@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE, getAuthHeaders, runTextScan, uploadAssetForScan, syncScanIdToUrl, ensureSessionToken } from "./api";
+import { API_BASE, getAuthHeaders, runTextScan, uploadAssetForScan, syncScanIdToUrl, ensureSessionToken, logFlagAction } from "./api";
 import { approveScan, fetchScan, waitForEngine, withColdStartRetry } from "./client";
 import { MOCK_SCAN_RESPONSE_V3, MOCK_CLEAN_SCAN_V3 } from "./mockData";
 import { VIOLATION_SAMPLE, CLEAN_SAMPLE } from "./presets";
@@ -251,13 +251,15 @@ export function useClaimLoomWorkspace() {
 
     const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     const isImage = file.type.startsWith("image/");
+    const lowerName = file.name.toLowerCase();
+    const isDoc = lowerName.endsWith(".docx") || lowerName.endsWith(".md") || lowerName.endsWith(".markdown") || lowerName.endsWith(".txt");
     if (file.size > MAX_UPLOAD) {
       setErrorBanner("That file is over 5 MB. Choose a smaller file.");
       input.value = "";
       return;
     }
-    if (!isPdf && !isImage) {
-      setErrorBanner("Unsupported file type. Upload a PDF, PNG, JPG or WebP.");
+    if (!isPdf && !isImage && !isDoc) {
+      setErrorBanner("Unsupported file type. Upload a PDF, DOCX, MD, TXT, PNG, JPG or WebP.");
       input.value = "";
       return;
     }
@@ -270,22 +272,31 @@ export function useClaimLoomWorkspace() {
     setIsScanning(true);
     setScanStep(`Scanning ${file.name}...`);
     try {
+      const endpoint = isPdf ? "/api/scan-pdf" : isImage ? "/api/scan-image" : "/api/scan-doc";
       const live = await withColdStartRetry(
-        () => uploadAssetForScan(isPdf ? "/api/scan-pdf" : "/api/scan-image", file, channel, workspaceId),
+        () => uploadAssetForScan(endpoint as "/api/scan-pdf" | "/api/scan-image", file, channel, workspaceId),
         () => setScanStep("Waking the engine, retrying..."),
         () => wakingRef.current
       );
       if (id !== requestId.current) return;
       adopt(live, "live");
-      setActiveTab("canvas");
+      if (isDoc) {
+        // For document uploads, populate the editor with text and stay on Studio tab
+        const text = live.redacted_text || "";
+        setEditorText(text);
+        setOriginalText(text);
+        setActiveTab("studio");
+      } else {
+        setActiveTab("canvas");
+      }
       showToast(`Audit complete for ${file.name}.`);
     } catch (err) {
       if (id !== requestId.current) return;
       if (isNetworkFailure(err)) {
         setEngineOnline(false);
         setErrorBanner(`Backend connection failed: ${errMsg(err)}. Offline previews are read-only.`);
-        adopt({ ...MOCK_SCAN_RESPONSE_V3, scan_id: `scan_pdf_${Math.random().toString(36).slice(2, 7)}`, input_type: isPdf ? "pdf" : "image" }, "fallback");
-        setActiveTab("canvas");
+        adopt({ ...MOCK_SCAN_RESPONSE_V3, scan_id: `scan_pdf_${Math.random().toString(36).slice(2, 7)}`, input_type: isPdf ? "pdf" : isImage ? "image" : "text" }, "fallback");
+        if (isPdf || isImage) setActiveTab("canvas");
       } else setErrorBanner(`Live scan of ${file.name} failed: ${errMsg(err)}`);
     } finally {
       if (id === requestId.current) {
@@ -363,6 +374,11 @@ export function useClaimLoomWorkspace() {
         setEditorText(nextText);
       }
 
+      // Fix 5: Fire flag-action log in background when accepting a fix
+      if (issue.rule_id) {
+        void logFlagAction(current.scan_id, issue.rule_id, "Accepted");
+      }
+
       const remaining = current.issues.filter((i) => i.id !== issue.id);
       const updated: ScanResponse = { ...current, readiness_score: calcScore(remaining), issues: remaining };
       scanRef.current = updated;
@@ -383,6 +399,19 @@ export function useClaimLoomWorkspace() {
     setCurrentPage(issue.page ?? 1);
     setActiveTab("canvas");
   }, []);
+
+  const handleOverride = useCallback((issue: Issue, reason: string) => {
+    const current = scanRef.current;
+    if (!current) return;
+    void logFlagAction(current.scan_id, issue.rule_id || 3, "Overridden", reason);
+    const remaining = current.issues.filter((i) => i.id !== issue.id);
+    const updated: ScanResponse = { ...current, readiness_score: calcScore(remaining), issues: remaining };
+    scanRef.current = updated;
+    setScanResult(updated);
+    setSelectedIssueId(remaining[0]?.id ?? null);
+    syncScanIdToUrl(updated.scan_id, updated);
+    showToast("Issue overridden and resolved.");
+  }, [showToast]);
 
   const handleUploadClick = useCallback(() => fileInputRef.current?.click(), []);
   const closeCert = useCallback(() => setShowCert(false), []);
@@ -525,5 +554,5 @@ export function useClaimLoomWorkspace() {
     else signoffHint = "Ready to sign. This creates a tamper-evident certificate.";
   }
 
-  return { TABS, activeTab, setActiveTab, role, workspaceId, channel, setChannel, engineOnline, isLive, isWakingUp, kbVersion, rulesVersion, editorText, setEditorText, originalText, isScanning, scanStep, scanResult, setScanResult, scanOrigin, selectedIssueId, setSelectedIssueId, currentPage, setCurrentPage, errorBanner, setErrorBanner, toastMessage, showCert, signature, certificatePublicKey, kbChunks, affectedScansCount, rules, fileInputRef, issues, canApprove, isApproved, signoffHint, handleReaudit, handleWorkspaceChange, handleRoleChange, handleResetDemo, handleFileUpload, handleRunTextAudit, handleUploadClick, loadSample, handleApprove, openCert, closeCert, handleActivityReaudit, handleLocate, handleAcceptFix, handleSimulatePriceSync, showToast, setRules, setKbChunks, setRulesVersion, setKbVersion, setAffectedScansCount, scanRef, fetchScan };
+  return { TABS, activeTab, setActiveTab, role, workspaceId, channel, setChannel, engineOnline, isLive, isWakingUp, kbVersion, rulesVersion, editorText, setEditorText, originalText, isScanning, scanStep, scanResult, setScanResult, scanOrigin, selectedIssueId, setSelectedIssueId, currentPage, setCurrentPage, errorBanner, setErrorBanner, toastMessage, showCert, signature, certificatePublicKey, kbChunks, affectedScansCount, rules, fileInputRef, issues, canApprove, isApproved, signoffHint, handleReaudit, handleWorkspaceChange, handleRoleChange, handleResetDemo, handleFileUpload, handleRunTextAudit, handleUploadClick, loadSample, handleApprove, openCert, closeCert, handleActivityReaudit, handleLocate, handleAcceptFix, handleOverride, handleSimulatePriceSync, showToast, setRules, setKbChunks, setRulesVersion, setKbVersion, setAffectedScansCount, scanRef, fetchScan };
 }

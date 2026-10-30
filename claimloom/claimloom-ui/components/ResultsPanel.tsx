@@ -1,9 +1,10 @@
 "use client";
 
-import React, { memo, useEffect, useRef } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import type { Issue, ScanResponse } from "../lib/schema";
 import { Card, Empty } from "./Common";
 import { btnDark, btnGhost, Origin, prettyStatus, scoreTone, sevStyle } from "../lib/ui";
+import { logFlagAction } from "../lib/api";
 
 const PILLARS: Record<string, string> = {
   tone: "Tone",
@@ -20,17 +21,29 @@ const Chip = ({ children, cls = "bg-slate-100 text-slate-600" }: { children: Rea
 interface CardProps {
   issue: Issue;
   selected: boolean;
+  scanId: string;
   onSelect: (id: string) => void;
   onLocate: (issue: Issue) => void;
   onAccept: (issue: Issue) => void;
+  onOverride: (issue: Issue, reason: string) => void;
 }
 
-const IssueCard = memo(function IssueCard({ issue, selected, onSelect, onLocate, onAccept }: CardProps) {
+const IssueCard = memo(function IssueCard({ issue, selected, scanId, onSelect, onLocate, onAccept, onOverride }: CardProps) {
   const ref = useRef<HTMLElement>(null);
+  const [showOverride, setShowOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
   const s = sevStyle(issue.severity);
+
+  const handleConfirmOverride = () => {
+    void logFlagAction(scanId, issue.rule_id || 3, "Overridden", overrideReason);
+    onOverride(issue, overrideReason);
+    setShowOverride(false);
+    setOverrideReason("");
+  };
 
   return (
     <article
@@ -84,16 +97,46 @@ const IssueCard = memo(function IssueCard({ issue, selected, onSelect, onLocate,
           )}
         </div>
       </details>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onAccept(issue);
-        }}
-        className={`${btnDark} w-full`}
-      >
-        Accept fix
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAccept(issue);
+          }}
+          className={`${btnDark} flex-1`}
+        >
+          Accept fix
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowOverride((v) => !v);
+          }}
+          className={`${btnGhost} flex-shrink-0`}
+        >
+          Override
+        </button>
+      </div>
+      {showOverride && (
+        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="text"
+            value={overrideReason}
+            onChange={(e) => setOverrideReason(e.target.value)}
+            placeholder="Reason for override (e.g., B2B legal quote)"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            type="button"
+            onClick={handleConfirmOverride}
+            className={`${btnDark} w-full`}
+          >
+            Confirm override
+          </button>
+        </div>
+      )}
     </article>
   );
 });
@@ -106,10 +149,11 @@ interface Props {
   onSelect: (id: string) => void;
   onLocate: (issue: Issue) => void;
   onAccept: (issue: Issue) => void;
+  onOverride: (issue: Issue, reason: string) => void;
   onSample: (kind: "violation" | "clean" | "brochure") => void;
 }
 
-function ResultsPanel({ scanResult, isScanning, origin, selectedIssueId, onSelect, onLocate, onAccept, onSample }: Props) {
+function ResultsPanel({ scanResult, isScanning, origin, selectedIssueId, onSelect, onLocate, onAccept, onOverride, onSample }: Props) {
   if (isScanning) {
     return (
       <div className="space-y-4" aria-busy="true" aria-label="Audit in progress">
@@ -224,9 +268,11 @@ function ResultsPanel({ scanResult, isScanning, origin, selectedIssueId, onSelec
               key={issue.id}
               issue={issue}
               selected={selectedIssueId === issue.id}
+              scanId={scanResult.scan_id}
               onSelect={onSelect}
               onLocate={onLocate}
               onAccept={onAccept}
+              onOverride={onOverride}
             />
           ))}
         </div>

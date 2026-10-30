@@ -424,12 +424,25 @@ async def scan_image(
         payload = cached_response.model_dump()
         try:
             import main
+            # Fix 2: also convert image to PDF on cached hits
+            try:
+                _img_pdf_buf = io.BytesIO()
+                _load_flat_rgb(contents).save(_img_pdf_buf, format="PDF", resolution=100.0)
+                _img_pdf_bytes_cached = _img_pdf_buf.getvalue()
+            except Exception:
+                _img_pdf_bytes_cached = None
+            try:
+                import pdf_engine as _pdf_engine_cached
+                if _img_pdf_bytes_cached:
+                    _pdf_engine_cached._remember_pdf_in_memory(cached_response.scan_id, image_hash, _img_pdf_bytes_cached, payload)
+            except Exception:
+                pass
             background.add_task(
                 main.save_scan_persistence,
                 payload,
                 cached_response.redacted_text or "",
                 "image",
-                None,
+                _img_pdf_bytes_cached,
                 image_hash,
                 session.name,
                 None,
@@ -490,15 +503,28 @@ async def scan_image(
     resp_dict = response_obj.model_dump()
     if response_obj.ai_status == "ok":
         background.add_task(cache.set_cached_scan, cache_key, resp_dict)
+
+    # Fix 2: Convert uploaded image to a single-page PDF so canvas
+    # previews (GET /api/scans/{id}/page/1.png) and redline-pdf work for images.
+    try:
+        img_pdf_buf = io.BytesIO()
+        _load_flat_rgb(contents).save(img_pdf_buf, format="PDF", resolution=100.0)
+        img_pdf_bytes = img_pdf_buf.getvalue()
+    except Exception:
+        img_pdf_bytes = None
+
     try:
         import main
+        import pdf_engine as _pdf_engine
+        if img_pdf_bytes:
+            _pdf_engine._remember_pdf_in_memory(scan_id, image_hash, img_pdf_bytes, resp_dict)
         background.add_task(
             main.save_scan_persistence,
             resp_dict,
             redacted_text,
             "image",
-            None,
-            None,
+            img_pdf_bytes,
+            image_hash,
             session.name,
             rag_results,
         )

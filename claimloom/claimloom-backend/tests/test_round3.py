@@ -148,3 +148,47 @@ def test_reset_demo_seeds_local_price_reaudit_scans(monkeypatch):
     assert {"demo_scan_1", "demo_scan_2"}.issubset(set(affected))
     assert main._mem_scans["demo_scan_1"]["status"] == "needs_reaudit"
     assert pdf_engine._mem_scan_json["demo_scan_2"]["reaudit"]["needed"] is True
+
+
+def test_chunk3_price_update_syncs_rule5(monkeypatch):
+    """Updating chunk 3 to $39/month must update Rule #5 so that:
+    - Scanning 'The Pro Plan costs $39/month.' → zero Rule 5 violations.
+    - Scanning 'The Pro Plan costs $29/month.' → Rule 5 flagged.
+    After the test, reset Rule #5 back to $29/month to avoid polluting other tests.
+    """
+    import ai_client
+    import db
+    import ratelimit
+    import seed_kb
+
+    ratelimit.reset_rate_limits()
+    monkeypatch.setattr(ai_client, "AI_MODE", "rules_only")
+
+    with TestClient(main.app) as client:
+        # Reset first so we start from a known clean state
+        monkeypatch.setattr(db, "_connect", lambda: None)
+        client.post("/api/admin/reset-demo")
+        ratelimit.reset_rate_limits()
+
+        # Update chunk 3 via PUT /api/kb/chunks/3
+        put_res = client.put(
+            "/api/kb/chunks/3",
+            json={"chunk_text": "ClaimLoom Pro Plan subscription price is $39/month or $390/year."},
+        )
+        assert put_res.status_code == 200, put_res.text
+        assert put_res.json()["affected_count"] >= 2
+
+        # Scan "$39/month" — should be zero Rule 5 violations
+        r39 = client.post("/api/scan-text", json={"text": "The Pro Plan costs $39/month."})
+        assert r39.status_code == 200, r39.text
+        rule5_violations_39 = [i for i in r39.json()["issues"] if i.get("rule_id") == 5]
+        assert len(rule5_violations_39) == 0, f"Expected no Rule 5 violations for $39/month after sync, got: {rule5_violations_39}"
+
+        # Scan "$29/month" — should flag Rule 5 (old price is now wrong)
+        r29 = client.post("/api/scan-text", json={"text": "The Pro Plan costs $29/month."})
+        assert r29.status_code == 200, r29.text
+        rule5_violations_29 = [i for i in r29.json()["issues"] if i.get("rule_id") == 5]
+        assert len(rule5_violations_29) > 0, f"Expected Rule 5 violation for $29/month after sync to $39, got none"
+
+        # Reset demo to restore state
+        client.post("/api/admin/reset-demo")

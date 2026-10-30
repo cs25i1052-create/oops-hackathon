@@ -9,7 +9,7 @@ interface RadarRule { rule_id: number; rule_cited: string; total_flags: number; 
 interface Analytics { total_scans: number; average_readiness_score: number; approved_scans: number; reaudit_queue_count: number; rules_version: number; ambiguity_radar?: RadarRule[]; }
 interface Rewrite { proposed_rule_text: string; proposed_regex: string | null; suggestion?: { rationale?: string }; }
 interface Backtest { scans_evaluated: number; previous_flags: number; new_flags: number; false_positives_eliminated: number; safety: string; }
-function RadarTab() {
+function RadarTab({ workspaceId }: { workspaceId?: string }) {
   const [summary, setSummary] = useState<Analytics | null>(null);
   const [rules, setRules] = useState<RadarRule[]>([]);
   const [proposals, setProposals] = useState<Record<number, Rewrite>>({});
@@ -28,7 +28,8 @@ function RadarTab() {
 
   const post = async <T,>(id: number, path: string, method = "POST", body?: unknown, requiredRole: "Reviewer" | "Admin" = "Reviewer"): Promise<T | null> => {
     try {
-      await ensureSessionToken(requiredRole);
+      const ws = workspaceId ?? (typeof window !== "undefined" ? localStorage.getItem("cl_workspace") || "default" : "default");
+      await ensureSessionToken(requiredRole, typeof window !== "undefined" ? localStorage.getItem("cl_name") || "Judge Reviewer" : "Judge Reviewer", ws);
       const response = await fetch(`${API_BASE}${path}`, { method, headers: getAuthHeaders({ "Content-Type": "application/json" }), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       const data = await response.json().catch((): { detail?: unknown } => ({}));
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail || data));

@@ -40,6 +40,11 @@ _mem_scans: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.get_vault(force=True)  # load the Brand Truth Vault from Neon once at startup (falls back to local)
+    try:
+        from kb_router import ensure_demo_scans_seeded
+        ensure_demo_scans_seeded()
+    except Exception as _lifespan_exc:
+        print(f"[main] ensure_demo_scans_seeded skipped at startup: {_lifespan_exc}")
     yield
 
 

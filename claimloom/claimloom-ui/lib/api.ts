@@ -7,13 +7,14 @@ export const API_BASE = (
 interface SessionResponse { token: string; role: string; name: string; workspace_id: string; }
 interface ApiError { detail?: string | Array<{ loc?: Array<string | number>; msg?: string }>; message?: string; }
 
-export async function ensureSessionToken(role: "Creator" | "Reviewer" | "Admin" = "Reviewer", name = "Judge Reviewer", workspace_id = "default"): Promise<SessionResponse> {
-  const res = await fetch(`${API_BASE}/api/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, name, workspace_id }) });
+export async function ensureSessionToken(role: "Creator" | "Reviewer" | "Admin" = "Reviewer", name = "Judge Reviewer", workspace_id?: string): Promise<SessionResponse> {
+  const ws = workspace_id ?? (typeof window !== "undefined" ? localStorage.getItem("cl_workspace") || "default" : "default");
+  const res = await fetch(`${API_BASE}/api/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, name, workspace_id: ws }) });
   if (!res.ok) throw new Error(`Could not establish ${role} session (HTTP ${res.status})`);
   const data = await res.json();
   localStorage.setItem("cl_token", data.token);
   localStorage.setItem("cl_role", data.role || role);
-  localStorage.setItem("cl_workspace", data.workspace_id || workspace_id);
+  localStorage.setItem("cl_workspace", data.workspace_id || ws);
   localStorage.setItem("cl_name", data.name || name);
   return data;
 }
@@ -72,7 +73,7 @@ export async function runTextScan(
 }
 
 export async function uploadAssetForScan(
-  endpoint: "/api/scan-pdf" | "/api/scan-image",
+  endpoint: "/api/scan-pdf" | "/api/scan-image" | "/api/scan-doc",
   file: File,
   channel: string = "general",
   workspaceId: string = "default"
@@ -106,6 +107,18 @@ export async function uploadAssetForScan(
     return ScanResponseSchema.parse(raw);
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export async function logFlagAction(scanId: string, ruleId: number, action: "Accepted" | "Dismissed" | "Overridden", reason: string = ""): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/flag-action`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ scan_id: scanId, rule_id: ruleId, action, reason }),
+    });
+  } catch {
+    // Ignore network errors in offline mode
   }
 }
 

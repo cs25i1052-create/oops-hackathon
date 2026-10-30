@@ -3,10 +3,11 @@ const LOCAL_API = "http://localhost:8000";
 const $ = (id) => document.getElementById(id);
 
 async function loadSettings() {
-  const saved = await chrome.storage.sync.get({ api: DEFAULT_API, localBackend: false, channel: "general", draft: "" });
+  const saved = await chrome.storage.sync.get({ api: DEFAULT_API, localBackend: false, workspace: "default", channel: "general", draft: "" });
   $("localBackend").checked = saved.localBackend;
   $("api").value = saved.localBackend ? LOCAL_API : (saved.api || DEFAULT_API);
   $("api").disabled = saved.localBackend;
+  $("workspace").value = saved.workspace;
   $("channel").value = saved.channel;
   $("draft").value = saved.draft;
 }
@@ -67,6 +68,7 @@ async function scanCopy() {
   try {
     const localBackend = $("localBackend").checked;
     const api = (localBackend ? LOCAL_API : $("api").value.trim()).replace(/\/+$/, "");
+    const workspace = $("workspace").value;
     const channel = $("channel").value;
     let text = $("draft").value.trim();
     if (!api) throw new Error("Enter a backend URL first.");
@@ -78,12 +80,12 @@ async function scanCopy() {
     if (!granted) throw new Error("Chrome permission for this backend was not granted.");
     if (!text) text = await selectedTextOnPage();
     if (!text) throw new Error("Select copy on the page or paste text into the box.");
-    await chrome.storage.sync.set({ api, localBackend, channel, draft: $("draft").value });
+    await chrome.storage.sync.set({ api, localBackend, workspace, channel, draft: $("draft").value });
     status.textContent = "Scanning copy…";
     const response = await fetch(`${api}/api/scan-text`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Workspace-Id": "default" },
-      body: JSON.stringify({ text, channel, workspace_id: "default" }),
+      headers: { "Content-Type": "application/json", "X-Workspace-Id": workspace },
+      body: JSON.stringify({ text, channel, workspace_id: workspace }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Scan failed (${response.status}).`);
