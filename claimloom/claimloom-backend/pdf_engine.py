@@ -625,6 +625,62 @@ async def scan_pdf_endpoint(
     return response_obj
 
 
+@router.post("/api/scan-sample-pdf", response_model=ScanResponse)
+async def scan_sample_pdf_endpoint(
+    background: BackgroundTasks,
+    channel: str = Form("general"),
+    workspace_id: str = Form("default"),
+    _client_ip: str = Depends(rate_limit_scan),
+    session: SessionUser = Depends(get_current_session),
+):
+    """Generate the built-in two-page brochure and process it via the normal PDF endpoint."""
+    doc = fitz.open()
+    try:
+        page_one = doc.new_page(width=612, height=792)
+        page_one.insert_text(
+            fitz.Point(50, 80),
+            "ClaimLoom Pro Plan costs $15/month with guaranteed 100% results for our clients!",
+            fontsize=12,
+            fontname="helv",
+            color=(0.05, 0.05, 0.05),
+        )
+        page_one.insert_text(
+            fitz.Point(50, 130),
+            "Low contrast subtle disclaimer text on page one",
+            fontsize=11,
+            fontname="helv",
+            color=(0.88, 0.88, 0.88),
+        )
+        page_one.insert_text(
+            fitz.Point(50, 720),
+            "Unreadable 6.5pt micro-print terms and conditions footer.",
+            fontsize=6.5,
+            fontname="helv",
+            color=(0.1, 0.1, 0.1),
+        )
+        page_two = doc.new_page(width=612, height=792)
+        page_two.insert_text(
+            fitz.Point(50, 80),
+            "Page 2: Certified battery range is 110 km per charge. Click here to start.",
+            fontsize=12,
+            fontname="helv",
+            color=(0.05, 0.05, 0.05),
+        )
+        sample_bytes = doc.tobytes()
+    finally:
+        doc.close()
+
+    sample_upload = UploadFile(filename="claimloom-sample-brochure.pdf", file=io.BytesIO(sample_bytes))
+    return await scan_pdf_endpoint(
+        background=background,
+        file=sample_upload,
+        channel=channel,
+        workspace_id=workspace_id,
+        _client_ip=_client_ip,
+        session=session,
+    )
+
+
 def _extract_supported_document(filename: str, file_bytes: bytes) -> str:
     suffix = (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
     if suffix in {"md", "markdown", "txt"}:

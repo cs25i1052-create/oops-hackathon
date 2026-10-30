@@ -284,6 +284,13 @@ def analyze_text(
             verified_claims.append(ev)
 
     for raw_rag_issue in rag_raw.get("issues", []) or []:
+        raw_flagged = str(raw_rag_issue.get("flagged_text") or "") if isinstance(raw_rag_issue, dict) else ""
+        if raw_flagged:
+            rag_start, rag_end = locate_phrase(original_text, raw_flagged, [])
+            if overlaps(rag_start, rag_end, taken):
+                # A deterministic finding already covers this sentence/claim;
+                # don't add an unpositioned duplicate RAG card for it.
+                continue
         rag_item = _rag_issue_to_item(raw_rag_issue, original_text, taken, ch)
         if rag_item:
             issues.append(rag_item)

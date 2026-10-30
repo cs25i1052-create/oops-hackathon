@@ -23,6 +23,9 @@ def clean_env(monkeypatch):
               "GROQ_MODELS", "GEMINI_MODELS", "OPENROUTER_MODELS"]:
         monkeypatch.delenv(k, raising=False)
     ai_client.reset_cooldowns()
+    monkeypatch.setattr(ai_client, "AI_MODE", "auto")
+    monkeypatch.setattr(ai_client, "_successful_provider", None)
+    monkeypatch.setattr(ai_client, "_successful_model_by_provider", {})
     db._cache.update(at=0.0, ttl=0)
     yield
 

@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { runTextScan, uploadAssetForScan, syncScanIdToUrl, ensureSessionToken } from "./api";
+import { API_BASE, getAuthHeaders, runTextScan, uploadAssetForScan, syncScanIdToUrl, ensureSessionToken } from "./api";
 import { approveScan, fetchScan, waitForEngine, withColdStartRetry } from "./client";
 import { MOCK_SCAN_RESPONSE_V3, MOCK_CLEAN_SCAN_V3 } from "./mockData";
 import { VIOLATION_SAMPLE, CLEAN_SAMPLE } from "./presets";
@@ -297,7 +297,7 @@ export function useClaimLoomWorkspace() {
   };
 
   const loadSample = useCallback(
-    (kind: "violation" | "clean" | "brochure") => {
+    async (kind: "violation" | "clean" | "brochure") => {
       setErrorBanner(null);
       if (kind === "clean") {
         setEditorText(CLEAN_SAMPLE);
@@ -312,11 +312,35 @@ export function useClaimLoomWorkspace() {
         else adopt(MOCK_SCAN_RESPONSE_V3, "sample");
         showToast(engineOnline ? "Sample copy loaded. Run an audit for live results." : "Loaded the read-only violation sample.");
       } else {
-        if (engineOnline) showToast("Offline brochure preview is unavailable while the live engine is connected.");
-        else { adopt(MOCK_SCAN_RESPONSE_V3, "sample"); setActiveTab("canvas"); }
+        if (!engineOnline) {
+          adopt(MOCK_SCAN_RESPONSE_V3, "sample");
+          setActiveTab("canvas");
+          return;
+        }
+        try {
+          const form = new FormData();
+          form.append("channel", channel);
+          form.append("workspace_id", workspaceId);
+          const response = await fetch(`${API_BASE}/api/scan-sample-pdf`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: form,
+          });
+          const data = await response.json().catch(() => null) as { detail?: string } | null;
+          if (!response.ok) throw new Error(data?.detail || `Sample brochure scan failed (HTTP ${response.status}).`);
+          const live = ScanResponseSchema.parse(data);
+          const text = live.redacted_text || "";
+          setEditorText(text);
+          setOriginalText(text);
+          adopt(live, "live");
+          setActiveTab("canvas");
+          showToast("Sample brochure scanned. Review its live page findings and bounding boxes.");
+        } catch (e) {
+          setErrorBanner(errMsg(e));
+        }
       }
     },
-    [adopt, engineOnline, setScanResult, setScanOrigin, showToast]
+    [adopt, channel, engineOnline, setEditorText, setErrorBanner, setOriginalText, setScanResult, setScanOrigin, setActiveTab, showToast, workspaceId]
   );
 
   // Patch 3: Track pending fixes on live scans so sign-off requires re-audit
@@ -415,17 +439,30 @@ export function useClaimLoomWorkspace() {
   }, []);
 
   const handleSimulatePriceSync = useCallback(async () => {
-    const chunk = kbChunks.find((item) => item.chunk_id === 3);
-    if (!chunk) return;
+    const updatedFact = "ClaimLoom Pro Plan subscription price is $39/month or $390/year.";
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/kb/chunks/3`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("cl_token") || ""}`, "X-Workspace-Id": localStorage.getItem("cl_workspace") || "default" },
-        body: JSON.stringify({ chunk_text: "ClaimLoom Pro Plan subscription price is $39/month or $390/year." }),
+      const response = await fetch(`${API_BASE}/api/kb/chunks/3`, {
+        method: "PUT", headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ chunk_text: updatedFact }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Knowledge sync failed");
       setKbVersion(data.kb_version);
       setAffectedScansCount(data.affected_count || 0);
+      setKbChunks((current) => {
+        const exists = current.some((item) => item.chunk_id === 3);
+        const updated = current.map((item) => item.chunk_id === 3
+          ? { ...item, fact_text: updatedFact, updated_at: new Date().toISOString() }
+          : item);
+        return exists ? updated : [...updated, {
+          chunk_id: 3,
+          doc_title: "Approved Pricing Sheet Q4",
+          page: 1,
+          category: "Pricing",
+          fact_text: updatedFact,
+          updated_at: new Date().toISOString(),
+        }];
+      });
       const current = scanRef.current;
       if (current && (data.affected_scans || []).includes(current.scan_id)) {
         const fresh = await fetchScan(current.scan_id);
@@ -433,7 +470,7 @@ export function useClaimLoomWorkspace() {
       }
       showToast(`Truth Vault updated. ${data.affected_count || 0} scans need re-audit.`);
     } catch (e) { setErrorBanner(e instanceof Error ? e.message : "Knowledge sync failed"); }
-  }, [kbChunks, showToast]);
+  }, [showToast, setKbChunks]);
 
   const handleResetDemo = () => {
     requestId.current++;
@@ -453,7 +490,14 @@ export function useClaimLoomWorkspace() {
     setErrorBanner(null);
     localStorage.removeItem("cl_last_scan");
     window.history.replaceState({}, "", window.location.pathname);
-    showToast("Workspace reset.");
+    showToast("Resetting workspace data…");
+    void fetch(`${API_BASE}/api/admin/reset-demo`, { method: "POST", headers: getAuthHeaders() })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null) as { detail?: string } | null;
+        if (!response.ok) throw new Error(data?.detail || `Workspace reset failed (HTTP ${response.status}).`);
+        showToast("Workspace reset.");
+      })
+      .catch((e: unknown) => setErrorBanner(errMsg(e)));
   };
 
   const issues = scanResult?.issues ?? EMPTY_ISSUES;

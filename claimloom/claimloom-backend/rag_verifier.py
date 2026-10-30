@@ -6,6 +6,12 @@ import re
 import db
 
 CLAIM_REGEX = re.compile(r"(?i)(?:\$\s*\d+(?:\.\d{1,2})?\s*(?:/|per\s+)?(?:month|mo|year|yr)?|\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:km|%\s*(?:in|to)\s*\d+\s*(?:min|minutes)|minutes|min|years?|yrs?)\b)")
+_mem_evidence: list[dict] = []
+
+
+def extract_numbers_with_units(text: str) -> list[str]:
+    """Return normalized quantitative claims matched by the verifier regex."""
+    return [re.sub(r"\s+", "", match.group(0)) for match in CLAIM_REGEX.finditer(text or "")]
 
 
 def _get_genai_client():
@@ -99,6 +105,12 @@ def verify_claims(text, workspace_id="default"):
         domain, required = _claim_domain(claim, clause)
         if not domain:
             continue
+        # Distinguish a product range/charging claim from ordinary distance or
+        # road-speed copy, which can also contain the token "km".
+        if domain == "battery":
+            claim_tail = text[match.end():match.end() + 12]
+            if re.match(r"\s*/\s*h(?:r)?\b", claim_tail, re.I) or re.match(r"\s+away\b", claim_tail, re.I):
+                continue
         terms = set(re.findall(r"[a-z]+", clause.lower()))
         # Filter by domain before ranking: a high lexical or vector score from an
         # unrelated fact must never supply the correction for this claim.
@@ -133,21 +145,99 @@ def verify_claims(text, workspace_id="default"):
             if verified_key not in seen_verified:
                 verified.append(evidence)
                 seen_verified.add(verified_key)
-    return {"verified_claims": verified, "issues": issues}
+    return {"verified_claims": verified, "issues": issues, "contradicted_issues": issues}
+
+
+def record_evidence(scan_id: str, results: dict) -> None:
+    """Persist scan citations, keeping an in-memory copy when Neon is unavailable."""
+    entries = []
+    for citation in results.get("verified_claims", []) or []:
+        if isinstance(citation, dict) and citation.get("chunk_id") is not None:
+            entries.append((citation, citation.get("claim_text") or citation.get("excerpt") or ""))
+    for issue in results.get("issues", []) or []:
+        if not isinstance(issue, dict):
+            continue
+        citation = issue.get("evidence")
+        if isinstance(citation, dict) and citation.get("chunk_id") is not None:
+            entries.append((citation, citation.get("claim_text") or issue.get("flagged_text") or citation.get("excerpt") or ""))
+
+    rows = []
+    for citation, claim_text in entries:
+        row = {
+            "scan_id": str(scan_id),
+            "claim_text": str(claim_text),
+            "chunk_id": int(citation["chunk_id"]),
+            "verdict": str(citation.get("verdict") or "Verified"),
+            "similarity": float(citation.get("similarity") or 0.0),
+        }
+        _mem_evidence.append(row)
+        rows.append(row)
+
+    if not rows:
+        return
+    conn = None
+    try:
+        conn = db._connect()
+        if not conn:
+            return
+        with conn.cursor() as cur:
+            for row in rows:
+                cur.execute(
+                    """INSERT INTO public.claim_evidence
+                       (scan_id, claim_text, chunk_id, verdict, similarity)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (row["scan_id"], row["claim_text"], row["chunk_id"], row["verdict"], row["similarity"]),
+                )
+        conn.commit()
+    except Exception as exc:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        print(f"[rag_verifier] evidence persistence skipped: {exc}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def reaudit_changed(chunk_ids: list[int]) -> list[str]:
-    conn = db._connect()
-    if not conn:
-        return []
+    changed = {int(chunk_id) for chunk_id in chunk_ids}
+    affected = list(dict.fromkeys(
+        str(row.get("scan_id"))
+        for row in _mem_evidence
+        if row.get("scan_id") and row.get("chunk_id") is not None and int(row["chunk_id"]) in changed
+    ))
+    conn = None
     try:
+        conn = db._connect()
+        if not conn:
+            return affected
         with conn.cursor() as cur:
             cur.execute("SELECT DISTINCT scan_id FROM public.claim_evidence WHERE chunk_id = ANY(%s)", (chunk_ids,))
-            return [str(row[0]) for row in cur.fetchall()]
-    except Exception:
-        return []
+            affected.extend(str(row[0]) for row in cur.fetchall() if row[0] is not None)
+            affected = list(dict.fromkeys(affected))
+            if affected:
+                cur.execute(
+                    """UPDATE public.scan_documents
+                       SET reaudit_needed = TRUE,
+                           reaudit_reason = 'A Truth Vault fact cited by this scan was updated after approval.'
+                       WHERE scan_id = ANY(%s)""",
+                    (affected,),
+                )
+        conn.commit()
+        return affected
+    except Exception as exc:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        print(f"[rag_verifier] re-audit persistence skipped: {exc}")
+        return affected
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 reaudit_changed_chunks = reaudit_changed

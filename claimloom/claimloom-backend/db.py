@@ -186,6 +186,10 @@ def _connect():
         raise
 
 
+# Backwards-compatible import used by seed scripts and downstream tests.
+get_db_connection = _connect
+
+
 def ping() -> bool:
     """Wakes Neon from its idle sleep. Used by /health."""
     conn = None
