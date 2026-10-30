@@ -257,7 +257,7 @@ def analyze_text(
     ch = normalize_channel(channel)
     ws = (workspace_id or "default").strip() or "default"
 
-    rules, facts, _source = db.get_vault()
+    rules, facts, _source = db.get_workspace_vault(ws)
     by_id = {r["rule_id"]: r for r in rules}
     text_rules = [r for r in rules if r.get("applies_to", "text") in ("text", "both")]
 

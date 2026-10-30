@@ -109,7 +109,7 @@ export default function EditorCard({
               type="button"
               onClick={onUploadClick}
               disabled={isScanning}
-              className="font-medium text-blue-700 hover:underline disabled:opacity-50"
+              className="font-medium text-blue-700 hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               upload a PDF or image
             </button>{" "}
@@ -120,7 +120,7 @@ export default function EditorCard({
           <label className="sr-only" htmlFor="channel">
             Target channel
           </label>
-          <select id="channel" value={channel} onChange={(e) => onChannelChange(e.target.value)} className={selectCls}>
+          <select id="channel" aria-label="Target publication channel" value={channel} onChange={(e) => onChannelChange(e.target.value)} className={selectCls}>
             {CHANNELS.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
@@ -134,7 +134,7 @@ export default function EditorCard({
                 type="button"
                 aria-pressed={view === v.id}
                 onClick={() => setView(v.id)}
-                className={`px-3 py-1.5 text-xs font-semibold transition ${
+                className={`px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
                   view === v.id ? "bg-slate-900 text-white" : "bg-white text-slate-700 hover:bg-slate-50"
                 }`}
               >
@@ -158,7 +158,7 @@ export default function EditorCard({
           }}
           rows={8}
           placeholder="Paste promotional copy, product specs or press release text here."
-          className="w-full resize-y rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-2 focus:outline-blue-500/30"
+          className="w-full resize-y rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
         />
       )}
 
@@ -174,7 +174,7 @@ export default function EditorCard({
                     key={i}
                     type="button"
                     onClick={() => onSelectIssue(s.id as string)}
-                    className={`rounded px-0.5 font-medium underline decoration-2 underline-offset-2 ${
+                    className={`rounded px-0.5 font-medium underline decoration-2 underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
                       s.severity === "High"
                         ? "bg-red-100 text-red-900 decoration-red-500"
                         : "bg-amber-100 text-amber-900 decoration-amber-500"

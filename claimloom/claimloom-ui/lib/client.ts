@@ -3,6 +3,9 @@ import { ScanResponse, ScanResponseSchema } from "./schema";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+interface ApprovalCertificate { signature?: string; entry_hash?: string; text_sha256?: string; prev_hash?: string | null; reviewer?: string; [field: string]: unknown; }
+export interface ScanVerification { valid?: boolean; tampered?: boolean; chain_valid?: boolean; certificate?: { entry_hash?: string }; error?: string; }
+
 async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -70,7 +73,7 @@ export async function approveScan(
   scanId: string,
   role: string,
   textSnapshot?: string
-): Promise<{ approval: any; public_key: string | null; error: string | null }> {
+): Promise<{ approval: ApprovalCertificate | null; public_key: string | null; error: string | null }> {
   try {
     let versionNo: number | undefined;
     if (textSnapshot !== undefined) {
@@ -89,7 +92,7 @@ export async function approveScan(
       15000
     );
     if (!res.ok) return { approval: null, public_key: null, error: `HTTP Error ${res.status}` };
-    const data = await res.json();
+    const data = await res.json() as { approval?: ApprovalCertificate; public_key?: string; signature?: string } & ApprovalCertificate;
     const approval = data.approval || data;
     return approval.signature
       ? { approval, public_key: data.public_key || null, error: null }
@@ -99,10 +102,10 @@ export async function approveScan(
   }
 }
 
-export async function verifyScan(scanId: string) {
+export async function verifyScan(scanId: string): Promise<ScanVerification> {
   const response = await fetchWithTimeout(`${API_BASE}/api/verify/${encodeURIComponent(scanId)}`, { headers: getAuthHeaders() });
   if (!response.ok) throw new Error(`Verification failed (HTTP ${response.status})`);
-  return response.json();
+  return response.json() as Promise<ScanVerification>;
 }
 
 export const pageImageUrl = (scanId: string, page: number) =>

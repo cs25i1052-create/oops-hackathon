@@ -204,13 +204,14 @@ def health_check():
         "database": "connected" if db_ok else "not connected (using local rules)",
         "rules_source": source,
         "ai_providers_configured": [p["name"] for p in ai_client._ordered_providers()],
+        "ai_budget": ai_client.budget_info(),
     }
 
 
 @app.get("/api/ai-status")
 def ai_status():
     """Open this URL after deploying: it tests every AI provider and tells you which model works."""
-    return {"providers": ai_client.status()}
+    return {"providers": ai_client.status(), "ai_budget": ai_client.budget_info()}
 
 
 # ------------------------------------------------------------------ Text Scan (Cached + Rate-Limited)
@@ -229,7 +230,7 @@ def scan_text(
     workspace_id = resolve_workspace_id(request.workspace_id, session)
 
     # Compute current versions for deterministic SHA-256 cache lookup
-    rules, _facts, _src = db.get_vault()
+    rules, _facts, _src = db.get_workspace_vault(workspace_id)
     rules_version = get_rules_version()
     kb_version = pipeline.get_kb_version(workspace_id)
 
@@ -310,8 +311,8 @@ def scan_text(
 
 # ------------------------------------------------------------------ Truth Vault
 @app.get("/api/rules")
-def list_rules(refresh: bool = False):
-    rules, facts, source = db.get_vault(force=refresh)
+def list_rules(refresh: bool = False, workspace_id: str = "default"):
+    rules, facts, source = db.get_workspace_vault(workspace_id, force=refresh)
     return {"source": source, "rules": rules, "facts": facts, "rules_version": get_rules_version(force=refresh)}
 
 

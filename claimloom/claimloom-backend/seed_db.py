@@ -172,6 +172,8 @@ DEMO_FLAG_EVENTS = [
 # Define your rule columns explicitly so they match your dictionaries
 RULE_COLUMNS = [
     "rule_id",
+    "workspace_id",
+    "version_no",
     "violation_type",
     "severity",
     "rule_cited",
@@ -179,8 +181,16 @@ RULE_COLUMNS = [
     "rule_text",
     "regex_pattern",
     "default_fix",
-    "claim_status"
+    "claim_status",
+    "allowed_numbers",
+    "applies_to",
 ]
+
+for _rule in RULES_DATA:
+    _rule.setdefault("workspace_id", "default")
+    _rule.setdefault("version_no", 1)
+    _rule.setdefault("allowed_numbers", None)
+    _rule.setdefault("applies_to", "text")
 
 
 def seed_neon_database():
@@ -193,32 +203,11 @@ def seed_neon_database():
 
     conn = psycopg2.connect(db_url, connect_timeout=10)
     cur = conn.cursor()
-    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS brand_rules (
-        rule_id INT PRIMARY KEY, violation_type VARCHAR(50), severity VARCHAR(20), rule_cited TEXT,
-        source_ref TEXT, rule_text TEXT, regex_pattern TEXT, default_fix TEXT, claim_status VARCHAR(50));""")
-    # These two ALTERs upgrade tables that were created with the older schema:
-    cur.execute("ALTER TABLE brand_rules ADD COLUMN IF NOT EXISTS allowed_numbers TEXT;")
-    cur.execute("ALTER TABLE brand_rules ADD COLUMN IF NOT EXISTS applies_to VARCHAR(10) DEFAULT 'text';")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS facts (
-        fact_id INT PRIMARY KEY, fact_text TEXT, source_ref TEXT);""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS scans (
-        scan_id VARCHAR(50) PRIMARY KEY, readiness_score INT, status VARCHAR(30),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
-    cur.execute("ALTER TABLE scans ADD COLUMN IF NOT EXISTS input_type VARCHAR(10) DEFAULT 'text';")
-    cur.execute("ALTER TABLE scans ADD COLUMN IF NOT EXISTS payload JSONB;")
-
-    # Round 3 scan storage may have been created before reaudit explanations
-    # were persisted. Upgrade existing installations without requiring a
-    # destructive table rebuild.
-    cur.execute("ALTER TABLE IF EXISTS public.scan_documents ADD COLUMN IF NOT EXISTS reaudit_reason TEXT;")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS flag_events (
-        event_id SERIAL PRIMARY KEY, scan_id VARCHAR(50), rule_id INT, action VARCHAR(20),
-        reason TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
+    migration_path = os.path.join(os.path.dirname(__file__), "migrations", "001_round3.sql")
+    with open(migration_path, "r", encoding="utf-8") as migration_file:
+        for statement in migration_file.read().split(";"):
+            if statement.strip():
+                cur.execute(statement)
 
     cols = ", ".join(RULE_COLUMNS)
     marks = ", ".join(["%s"] * len(RULE_COLUMNS))
@@ -240,7 +229,6 @@ def seed_neon_database():
         for ev in DEMO_FLAG_EVENTS:
             cur.execute("INSERT INTO flag_events (scan_id, rule_id, action, reason) VALUES (%s, %s, %s, %s);", ev)
 
-    cur.execute("CREATE TABLE IF NOT EXISTS public.kb_chunks (chunk_id INT PRIMARY KEY, doc_title TEXT NOT NULL, page_num INT NOT NULL DEFAULT 1, paragraph_num INT NOT NULL DEFAULT 1, chunk_text TEXT NOT NULL, content_hash TEXT, embedding JSONB, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
     cur.execute("CREATE TABLE IF NOT EXISTS public.kb_meta (key TEXT PRIMARY KEY, value INT NOT NULL DEFAULT 1);")
     cur.execute("INSERT INTO public.kb_meta (key, value) VALUES ('kb_version', 1) ON CONFLICT (key) DO NOTHING;")
     conn.commit()

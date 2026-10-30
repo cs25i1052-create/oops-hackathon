@@ -1,54 +1,63 @@
 "use client";
 
-import React, { memo, useEffect, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { KBChunkItem } from "../lib/mockData";
 import { Card } from "./Common";
 import { BrandRule, btnPrimary, inputCls } from "../lib/ui";
 import { API_BASE, ensureSessionToken, getAuthHeaders } from "../lib/api";
 
 interface Props {
+  workspaceId: string;
   kbVersion: number;
   chunks: KBChunkItem[];
   affectedCount: number;
   onSync: () => void;
   rules: BrandRule[];
-  onAddRule: (name: string, pattern: string) => void;
   onDataLoaded?: (rules: BrandRule[], chunks: KBChunkItem[], rulesVersion: number, kbVersion: number) => void;
   onAffected?: (count: number, ids: string[], version: number) => void;
 }
 
-function VaultTab({ kbVersion, chunks, affectedCount, onSync, rules, onAddRule, onDataLoaded, onAffected }: Props) {
+interface BackendRule { rule_id: number; rule_cited: string; violation_type: string; severity: string; rule_text: string; }
+interface BackendChunk { chunk_id: number; doc_title: string; page_num: number; chunk_text: string; updated_at?: string | null; }
+interface RulesResponse { rules?: BackendRule[]; rules_version?: number; }
+interface SourcesResponse { chunks?: BackendChunk[]; kb_version?: number; }
+
+function VaultTab({ workspaceId, kbVersion, chunks, affectedCount, onSync, rules, onDataLoaded, onAffected }: Props) {
   const [name, setName] = useState("");
   const [pattern, setPattern] = useState("");
   const [alert, setAlert] = useState("");
   const [busy, setBusy] = useState(false);
   const ready = name.trim().length > 0 && pattern.trim().length > 0;
 
-  const refresh = async () => {
+  const dataLoadedRef = useRef(onDataLoaded);
+  const affectedRef = useRef(onAffected);
+  useEffect(() => { dataLoadedRef.current = onDataLoaded; }, [onDataLoaded]);
+  useEffect(() => { affectedRef.current = onAffected; }, [onAffected]);
+
+  const refresh = useCallback(async () => {
     try {
       const [ruleRes, kbRes] = await Promise.all([
-        fetch(`${API_BASE}/api/rules?refresh=true`, { headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/api/kb/sources`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/api/rules?refresh=true&workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/api/kb/sources?workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
       ]);
       if (!ruleRes.ok || !kbRes.ok) throw new Error("Could not load live Truth Vault data.");
-      const [ruleData, kbData] = await Promise.all([ruleRes.json(), kbRes.json()]);
-      const mappedRules = (ruleData.rules || []).map((r: any) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text }));
-      const mappedChunks = (kbData.chunks || []).map((c: any) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" }));
-      onDataLoaded?.(mappedRules, mappedChunks, ruleData.rules_version || 1, kbData.kb_version || 1);
+      const [ruleData, kbData] = await Promise.all([ruleRes.json() as Promise<RulesResponse>, kbRes.json() as Promise<SourcesResponse>]);
+      const mappedRules: BrandRule[] = (ruleData.rules || []).map((r) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text }));
+      const mappedChunks: KBChunkItem[] = (kbData.chunks || []).map((c) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" }));
+      dataLoadedRef.current?.(mappedRules, mappedChunks, ruleData.rules_version || 1, kbData.kb_version || 1);
     } catch (e) { setAlert(e instanceof Error ? e.message : "Refresh failed"); }
-  };
-  useEffect(() => { void refresh(); }, []);
+  }, [workspaceId]);
+  useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
 
   const submit = () => {
     if (!ready) return;
     void (async () => {
       setBusy(true); setAlert("");
       try {
-        await ensureSessionToken("Admin");
-        const response = await fetch(`${API_BASE}/api/rules`, { method: "POST", headers: getAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ violation_type: "Tone", severity: "Medium", rule_cited: name.trim(), source_ref: "Custom Workspace Guideline", rule_text: pattern.trim(), regex_pattern: null, default_fix: null, applies_to: "text" }) });
-        const data = await response.json().catch(() => ({}));
+        await ensureSessionToken("Admin", localStorage.getItem("cl_name") || "Judge Reviewer", workspaceId);
+        const response = await fetch(`${API_BASE}/api/rules`, { method: "POST", headers: getAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ violation_type: "Tone", severity: "Medium", rule_cited: name.trim(), source_ref: "Custom Workspace Guideline", rule_text: pattern.trim(), regex_pattern: null, default_fix: null, applies_to: "text", workspace_id: workspaceId }) });
+        const data = await response.json().catch((): { detail?: string } => ({}));
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail || data));
-        onAddRule(name.trim(), pattern.trim());
         setName(""); setPattern(""); await refresh();
       } catch (e) { setAlert(e instanceof Error ? e.message : "Could not add rule"); }
       finally { setBusy(false); }
@@ -60,7 +69,7 @@ function VaultTab({ kbVersion, chunks, affectedCount, onSync, rules, onAddRule, 
       const response = await fetch(`${API_BASE}/api/kb/chunks/${chunk.chunk_id}`, { method: "PUT", headers: getAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ chunk_text: text }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Chunk update failed");
-      onAffected?.(data.affected_count || 0, data.affected_scans || [], data.kb_version || kbVersion);
+      affectedRef.current?.(data.affected_count || 0, data.affected_scans || [], data.kb_version || kbVersion);
       await refresh();
     } catch (e) { setAlert(e instanceof Error ? e.message : "Chunk update failed"); }
   };
@@ -109,7 +118,7 @@ function VaultTab({ kbVersion, chunks, affectedCount, onSync, rules, onAddRule, 
                 </span>
                 <span className="text-slate-400">{chunk.updated_at}</span>
               </div>
-              <textarea aria-label={`Edit fact ${chunk.chunk_id}`} defaultValue={chunk.fact_text} onBlur={(e) => { if (e.currentTarget.value !== chunk.fact_text) void updateChunk(chunk, e.currentTarget.value); }} className="w-full rounded border p-2 text-sm text-slate-700" />
+              <textarea aria-label={`Edit fact ${chunk.chunk_id}`} defaultValue={chunk.fact_text} onBlur={(e) => { if (e.currentTarget.value !== chunk.fact_text) void updateChunk(chunk, e.currentTarget.value); }} className="w-full rounded border p-2 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600" />
             </div>
           ))}
         </Card>

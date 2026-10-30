@@ -16,6 +16,7 @@ import base64
 import json
 import os
 import re
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,6 +39,11 @@ PROVIDERS = [
 
 PER_CALL_TIMEOUT = float(os.getenv("AI_CALL_TIMEOUT", "12.0"))
 TOTAL_BUDGET = float(os.getenv("AI_TOTAL_TIMEOUT", "30"))
+AI_MODE = os.getenv("AI_MODE", "auto").strip().lower()
+AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "1500"))
+_daily_calls = 0
+_daily_reset_day = int(time.time() // 86400)
+_daily_lock = threading.Lock()
 NUDGE = "\n\nIMPORTANT: your previous reply was not valid JSON. Reply with ONE valid JSON object only. No markdown, no commentary."
 
 # model names that are never chat models (used only by auto-discovery)
@@ -245,6 +251,17 @@ def _discover_models(p: dict, vision: bool) -> List[str]:
 def complete_json(system: str, user: str, image: Optional[Tuple[bytes, str]] = None,
                   max_tokens: int = 3000) -> Tuple[Any, str]:
     """Returns (parsed_json, 'provider/model'). Raises AIUnavailable if nothing works."""
+    global _daily_calls, _daily_reset_day
+    if AI_MODE == "rules_only":
+        raise AIUnavailable("AI_MODE is set to rules_only (deterministic mode)")
+    today = int(time.time() // 86400)
+    with _daily_lock:
+        if today != _daily_reset_day:
+            _daily_calls = 0
+            _daily_reset_day = today
+        if _daily_calls >= AI_DAILY_LIMIT:
+            raise AIUnavailable("Daily AI call budget reached; running in deterministic mode")
+        _daily_calls += 1
     deadline = time.monotonic() + TOTAL_BUDGET
     providers = _ordered_providers(vision=image is not None)
     if not providers:
@@ -276,6 +293,16 @@ def complete_json(system: str, user: str, image: Optional[Tuple[bytes, str]] = N
                 if kind == "ok":
                     return data, f"{p['name']}/{model} (auto-discovered)"
     raise AIUnavailable("; ".join(errors[-6:]) or "all providers failed")
+
+
+def budget_info() -> dict:
+    global _daily_calls, _daily_reset_day
+    today = int(time.time() // 86400)
+    with _daily_lock:
+        if today != _daily_reset_day:
+            _daily_calls = 0
+            _daily_reset_day = today
+        return {"ai_mode": AI_MODE, "daily_calls_used": _daily_calls, "daily_limit": AI_DAILY_LIMIT}
 
 
 def status() -> List[dict]:

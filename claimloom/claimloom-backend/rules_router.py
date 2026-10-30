@@ -74,6 +74,7 @@ class RuleCreate(BaseModel):
     regex_pattern: Optional[str] = Field(default=None, max_length=MAX_PATTERN_LENGTH)
     default_fix: Optional[str] = Field(default="compliant phrasing", max_length=1000)
     applies_to: str = Field(default="text", pattern=r"^(text|image|both)$")
+    workspace_id: Optional[str] = Field(default=None, max_length=64)
 
 
 @router.post("/api/rules")
@@ -82,10 +83,13 @@ def create_custom_rule(
     session: SessionUser = Depends(require_role("Admin")),
 ):
     _validate_regex(req.regex_pattern)
+    if req.workspace_id and req.workspace_id != session.workspace_id:
+        raise HTTPException(status_code=403, detail="Rule workspace must match the active session workspace.")
     rules, _, _ = db.get_vault()
     next_id = max((int(r.get("rule_id") or 0) for r in rules), default=20) + 1
     new_rule = {
         "rule_id": next_id,
+        "workspace_id": session.workspace_id,
         **req.model_dump(),
         "claim_status": None,
         "allowed_numbers": None,
@@ -98,10 +102,10 @@ def create_custom_rule(
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO public.brand_rules
-                       (rule_id, violation_type, severity, rule_cited, source_ref, rule_text, regex_pattern, default_fix, applies_to)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       (rule_id, workspace_id, version_no, violation_type, severity, rule_cited, source_ref, rule_text, regex_pattern, default_fix, applies_to)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
-                        next_id, req.violation_type, req.severity, req.rule_cited,
+                        next_id, session.workspace_id, next_version, req.violation_type, req.severity, req.rule_cited,
                         req.source_ref, req.rule_text, req.regex_pattern,
                         req.default_fix, req.applies_to,
                     ),

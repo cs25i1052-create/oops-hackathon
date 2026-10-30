@@ -2,34 +2,37 @@
 
 import React, { memo, useEffect, useState } from "react";
 import { Card } from "./Common";
-import { btnDark, btnPrimary, Role } from "../lib/ui";
+import { btnDark, btnPrimary } from "../lib/ui";
 import { API_BASE, ensureSessionToken, getAuthHeaders } from "../lib/api";
 
-interface Props { role: Role; }
-function RadarTab({ role }: Props) {
-  const [summary, setSummary] = useState<any>(null);
-  const [rules, setRules] = useState<any[]>([]);
-  const [proposals, setProposals] = useState<Record<number, any>>({});
-  const [backtests, setBacktests] = useState<Record<number, any>>({});
+interface RadarRule { rule_id: number; rule_cited: string; total_flags: number; override_count: number; override_rate_percent: number; needs_clarification: boolean; sample_override_reasons: string[]; }
+interface Analytics { total_scans: number; average_readiness_score: number; approved_scans: number; reaudit_queue_count: number; rules_version: number; ambiguity_radar?: RadarRule[]; }
+interface Rewrite { proposed_rule_text: string; proposed_regex: string | null; suggestion?: { rationale?: string }; }
+interface Backtest { scans_evaluated: number; previous_flags: number; new_flags: number; false_positives_eliminated: number; safety: string; }
+function RadarTab() {
+  const [summary, setSummary] = useState<Analytics | null>(null);
+  const [rules, setRules] = useState<RadarRule[]>([]);
+  const [proposals, setProposals] = useState<Record<number, Rewrite>>({});
+  const [backtests, setBacktests] = useState<Record<number, Backtest>>({});
   const [messages, setMessages] = useState<Record<number, string>>({});
 
   const refresh = async () => {
     try {
       const [s, a] = await Promise.all([fetch(`${API_BASE}/api/analytics/summary`, { headers: getAuthHeaders() }), fetch(`${API_BASE}/api/analytics/ambiguity`, { headers: getAuthHeaders() })]);
       if (!s.ok || !a.ok) throw new Error("Could not load governance analytics.");
-      const sd = await s.json(), ad = await a.json();
+      const sd = await s.json() as Analytics, ad = await a.json() as { ambiguity_radar?: RadarRule[] };
       setSummary(sd); setRules(ad.ambiguity_radar || sd.ambiguity_radar || []);
     } catch (e) { setMessages({ 0: e instanceof Error ? e.message : "Analytics unavailable" }); }
   };
   useEffect(() => { void refresh(); }, []);
 
-  const post = async (id: number, path: string, method = "POST", body?: unknown, requiredRole: "Reviewer" | "Admin" = "Reviewer") => {
+  const post = async <T,>(id: number, path: string, method = "POST", body?: unknown, requiredRole: "Reviewer" | "Admin" = "Reviewer"): Promise<T | null> => {
     try {
       await ensureSessionToken(requiredRole);
       const response = await fetch(`${API_BASE}${path}`, { method, headers: getAuthHeaders({ "Content-Type": "application/json" }), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-      const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch((): { detail?: unknown } => ({}));
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail || data));
-      return data;
+      return data as T;
     } catch (e) { setMessages((m) => ({ ...m, [id]: e instanceof Error ? e.message : "Request failed" })); return null; }
   };
 
@@ -39,14 +42,14 @@ function RadarTab({ role }: Props) {
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">{[
       ["Total audits", summary?.total_scans], ["Average readiness", summary?.average_readiness_score], ["Approved scans", summary?.approved_scans], ["Re-audit queue", summary?.reaudit_queue_count], ["Rules version", summary?.rules_version],
     ].map(([label, value]) => <Card key={String(label)} className="p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold">{value ?? "—"}</p></Card>)}</div>
-    <div className="space-y-4">{rules.map((rule: any) => {
+    <div className="space-y-4">{rules.map((rule) => {
       const id = Number(rule.rule_id);
       const proposal = proposals[id];
       const bt = backtests[id];
       return <Card key={id} className="space-y-3 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Rule #{id}: {rule.rule_cited}</h2><p className="text-sm text-slate-500">Flags {rule.total_flags} · Overrides {rule.override_count} ({rule.override_rate_percent}%) · Clarification: {rule.needs_clarification ? "needed" : "not flagged"}</p></div><button className={btnDark} onClick={async () => { const r = await post(id, `/api/rules/${id}/rewrite`); if (r) setProposals((p) => ({ ...p, [id]: r })); }}>Propose AI Rule Rewrite</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Rule #{id}: {rule.rule_cited}</h2><p className="text-sm text-slate-500">Flags {rule.total_flags} · Overrides {rule.override_count} ({rule.override_rate_percent}%) · Clarification: {rule.needs_clarification ? "needed" : "not flagged"}</p></div><button type="button" className={btnDark} onClick={async () => { const r = await post<Rewrite>(id, `/api/rules/${id}/rewrite`); if (r) setProposals((p) => ({ ...p, [id]: r })); }}>Propose AI Rule Rewrite</button></div>
         {!!rule.sample_override_reasons?.length && <p className="text-xs text-slate-500">Reasons: {rule.sample_override_reasons.join(" · ")}</p>}
-        {proposal && <div className="space-y-2 rounded bg-slate-50 p-3 text-sm"><p><b>Proposed rule:</b> {proposal.proposed_rule_text}</p><p><b>Regex:</b> {proposal.proposed_regex || "None"}</p><p><b>Rationale:</b> {proposal.suggestion?.rationale}</p><div className="flex gap-2"><button className={btnDark} onClick={async () => { const r = await post(id, `/api/rules/${id}/backtest`, "POST", { proposed_regex: proposal.proposed_regex }); if (r) setBacktests((v) => ({ ...v, [id]: r })); }}>Run Backtest</button><button className={btnPrimary} onClick={async () => { const r = await post(id, `/api/rules/${id}`, "PATCH", { rule_text: proposal.proposed_rule_text, regex_pattern: proposal.proposed_regex }, "Admin"); if (r) setMessages((m) => ({ ...m, [id]: `Committed version ${r.version_no}` })); }}>Commit Rule Update</button><button className={btnDark} onClick={async () => { const r = await post(id, `/api/rules/${id}/rollback`, "POST", {}, "Admin"); if (r) setMessages((m) => ({ ...m, [id]: `Restored version ${r.restored_version}` })); }}>Rollback</button></div></div>}
+        {proposal && <div className="space-y-2 rounded bg-slate-50 p-3 text-sm"><p><b>Proposed rule:</b> {proposal.proposed_rule_text}</p><p><b>Regex:</b> {proposal.proposed_regex || "None"}</p><p><b>Rationale:</b> {proposal.suggestion?.rationale}</p><div className="flex gap-2"><button type="button" className={btnDark} onClick={async () => { const r = await post<Backtest>(id, `/api/rules/${id}/backtest`, "POST", { proposed_regex: proposal.proposed_regex }); if (r) setBacktests((v) => ({ ...v, [id]: r })); }}>Run Backtest</button><button type="button" className={btnPrimary} onClick={async () => { const r = await post<{ version_no: number }>(id, `/api/rules/${id}`, "PATCH", { rule_text: proposal.proposed_rule_text, regex_pattern: proposal.proposed_regex }, "Admin"); if (r) setMessages((m) => ({ ...m, [id]: `Committed version ${r.version_no}` })); }}>Commit Rule Update</button><button type="button" className={btnDark} onClick={async () => { const r = await post<{ restored_version: number }>(id, `/api/rules/${id}/rollback`, "POST", {}, "Admin"); if (r) setMessages((m) => ({ ...m, [id]: `Restored version ${r.restored_version}` })); }}>Rollback</button></div></div>}
         {bt && <p className="text-xs text-slate-700">Evaluated {bt.scans_evaluated}; previous flags {bt.previous_flags}; new flags {bt.new_flags}; false positives eliminated {bt.false_positives_eliminated}; safety {bt.safety}.</p>}
         {messages[id] && <p role="status" className="text-xs text-blue-700">{messages[id]}</p>}
       </Card>;

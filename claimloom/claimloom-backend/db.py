@@ -24,6 +24,9 @@ _memory_events: List[Dict] = [
     {"scan_id": s, "rule_id": r, "action": a, "reason": why} for s, r, a, why in DEMO_FLAG_EVENTS
 ]
 
+for _rule in RULES_DATA:
+    _rule.setdefault("workspace_id", "default")
+
 
 _db_lock = threading.RLock()
 _lease_state = threading.local()
@@ -297,6 +300,18 @@ def get_vault(force: bool = False) -> Tuple[List[Dict], List[Dict], str]:
         print(f"[db] using local rules ({e})")
         _cache.update(at=now, ttl=FAIL_TTL, rules=list(RULES_DATA), facts=list(FACTS_DATA), source="local-fallback", flag_events=list(_memory_events), flag_events_loaded=True)
     return _cache["rules"], _cache["facts"], _cache["source"]
+
+
+def get_workspace_vault(workspace_id: str = "default", force: bool = False) -> Tuple[List[Dict], List[Dict], str]:
+    """Return baseline rules plus rules scoped to the requested workspace."""
+    workspace = (workspace_id or "default").strip() or "default"
+    rules, facts, source = get_vault(force=force)
+    scoped_rules = [
+        dict(rule) for rule in rules
+        if rule.get("workspace_id", "default") == "default"
+        or (workspace != "default" and rule.get("workspace_id") == workspace)
+    ]
+    return scoped_rules, facts, source
 
 
 def rules_by_id() -> Dict[int, Dict]:

@@ -160,7 +160,7 @@ function CanvasTab({
                   width: `${(x1 - x0) * 100}%`,
                   height: `${(y1 - y0) * 100}%`,
                 }}
-                className={`rounded border-2 transition focus-visible:outline-2 focus-visible:outline-blue-600 ${
+                className={`rounded border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 ${
                   sevStyle(issue.severity).box
                 } ${selectedIssueId === issue.id ? "z-10 ring-4 ring-blue-500/50" : ""}`}
               />
@@ -194,7 +194,7 @@ function CanvasTab({
                     select(issue);
                   }
                 }}
-                className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-2 focus-visible:outline-blue-600 ${
+                className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 ${
                   selected ? "border-blue-600 bg-blue-50/50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"
                 }`}
               >

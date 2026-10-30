@@ -387,7 +387,7 @@ def run_all_checks():
         })
         try:
             for _ in range(int(ratelimit.BUCKET_CAPACITY)):
-                assert ratelimit.rate_limit_scan(request) == "203.0.113.99"
+                assert ratelimit.rate_limit_scan(request) == "10.0.0.1"
             try:
                 ratelimit.rate_limit_scan(request)
             except HTTPException as exc:
@@ -397,9 +397,107 @@ def run_all_checks():
                 raise AssertionError("Expected HTTP 429 after exceeding 30-token burst capacity")
         finally:
             ratelimit.reset_rate_limits()
-        return "X-Forwarded-For honored; HTTP 429 + Retry-After triggered at burst limit"
+        return "last X-Forwarded-For hop honored; HTTP 429 + Retry-After triggered at burst limit"
 
     check("17. X-Forwarded-For Proxy Token Bucket Rate Limiter", test_rate_limiter)
+
+    # 11. Negative and boundary torture checks
+    def test_empty_text_rejected():
+        r = client.post("/api/scan-text", json={"text": "   "}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+        assert r.status_code == 400, r.text
+        return f"HTTP {r.status_code}"
+
+    def test_oversized_text_rejected():
+        r = client.post("/api/scan-text", json={"text": "a" * 8050}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+        assert r.status_code == 422, r.text
+        return f"HTTP {r.status_code}"
+
+    def test_emoji_rtl_utf16_offsets():
+        text = "🚀🔥 ClaimLoom Pro Plan is $15/month for مرحبا clients!"
+        r = client.post("/api/scan-text", json={"text": text}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+        assert r.status_code == 200, r.text
+        issues = r.json()["issues"]
+        assert all(i["flagged_text"] != "ClaimLoom" for i in issues), issues
+        price = next((i for i in issues if i["flagged_text"] == "$15/month"), None)
+        assert price is not None, issues
+        expected_start = len(text[:text.index("$15/month")].encode("utf-16-le")) // 2
+        expected_end = expected_start + len("$15/month")
+        assert (price["start"], price["end"]) == (expected_start, expected_end), (price, expected_start, expected_end)
+        return f"UTF-16 [{expected_start}, {expected_end})"
+
+    def test_corrupt_pdf_rejected():
+        r = client.post("/api/scan-pdf", files={"file": ("broken.pdf", b"not a pdf file", "application/pdf")}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+        assert r.status_code == 400, r.text
+        return f"HTTP {r.status_code}"
+
+    def test_encrypted_pdf_rejected():
+        doc = fitz.open()
+        doc.new_page()
+        pdf_bytes = doc.tobytes(encryption=fitz.PDF_ENCRYPT_AES_256, owner_pw="secret", user_pw="secret")
+        doc.close()
+        r = client.post("/api/scan-pdf", files={"file": ("encrypted.pdf", pdf_bytes, "application/pdf")}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+        assert r.status_code == 400, r.text
+        assert "password" in r.json().get("detail", "").lower(), r.text
+        return r.json()["detail"]
+
+    def test_eleven_page_pdf_rejected():
+        doc = fitz.open()
+        for _ in range(11):
+            doc.new_page()
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        r = client.post("/api/scan-pdf", files={"file": ("eleven.pdf", pdf_bytes, "application/pdf")}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+        assert r.status_code == 400, r.text
+        assert "10 pages" in r.json().get("detail", ""), r.text
+        return r.json()["detail"]
+
+    def test_creator_rule_authorization():
+        auth = {"Authorization": f"Bearer {tokens['Creator']}"}
+        patch_res = client.patch("/api/rules/3", json={"rule_text": "Creator must not update rules."}, headers=auth)
+        create_res = client.post("/api/rules", json={"violation_type": "Tone", "severity": "Low", "rule_cited": "Test custom rule", "rule_text": "This is a test custom rule."}, headers=auth)
+        assert patch_res.status_code == 403, patch_res.text
+        assert create_res.status_code == 403, create_res.text
+        return "PATCH and POST both returned 403"
+
+    def test_broad_regex_vandalism_guard():
+        before = client.get("/api/rules?refresh=true").json()
+        payload = {"violation_type": "Tone", "severity": "Low", "rule_cited": "Broad regex test", "rule_text": "Test broad regex rejection.", "regex_pattern": None}
+        for pattern in (".", ".*"):
+            payload["regex_pattern"] = pattern
+            r = client.post("/api/rules", json=payload, headers={"Authorization": f"Bearer {tokens['Admin']}"})
+            assert r.status_code == 422, f"{pattern!r}: {r.status_code} {r.text}"
+        after = client.get("/api/rules?refresh=true").json()
+        assert len(after["rules"]) == len(before["rules"]), (len(before["rules"]), len(after["rules"]))
+        return "'.' and '.*' rejected; rules list unchanged"
+
+    def test_rules_only_degraded_guard():
+        original_env = __import__("os").environ.get("AI_MODE")
+        original_mode = main.ai_client.AI_MODE
+        try:
+            __import__("os").environ["AI_MODE"] = "rules_only"
+            main.ai_client.AI_MODE = "rules_only"
+            r = client.post("/api/scan-text", json={"text": "ClaimLoom offers clear governance tools for enterprise teams."}, headers={"Authorization": f"Bearer {tokens['Creator']}"})
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert data["ai_status"] == "degraded", data
+            assert data["status"] == "needs_review", data
+            return f"ai_status={data['ai_status']}, status={data['status']}"
+        finally:
+            main.ai_client.AI_MODE = original_mode
+            if original_env is None:
+                __import__("os").environ.pop("AI_MODE", None)
+            else:
+                __import__("os").environ["AI_MODE"] = original_env
+
+    check("18. Empty & whitespace text rejection", test_empty_text_rejected)
+    check("19. Oversized text rejection (>8000 chars)", test_oversized_text_rejected)
+    check("20. Emoji/RTL UTF-16 highlight offsets", test_emoji_rtl_utf16_offsets)
+    check("21. Corrupt/non-PDF rejection", test_corrupt_pdf_rejected)
+    check("22. Encrypted PDF password rejection", test_encrypted_pdf_rejected)
+    check("23. 11-page PDF limit", test_eleven_page_pdf_rejected)
+    check("24. Creator rule authorization", test_creator_rule_authorization)
+    check("25. Over-broad regex vandalism guard", test_broad_regex_vandalism_guard)
+    check("26. AI_MODE=rules_only degraded guard", test_rules_only_degraded_guard)
 
     print("=" * 92)
     passed = sum(1 for _, ok, _, _ in results if ok)

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { verifyScan } from "../lib/client";
+import { ScanVerification, verifyScan } from "../lib/client";
 import type { ScanResponse } from "../lib/schema";
 import { btnGhost, btnPrimary, Role } from "../lib/ui";
 
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export default function CertificateModal({ scan, role, signature, publicKey, onClose }: Props) {
-  const [verification, setVerification] = useState<any>(null);
+  const [verification, setVerification] = useState<ScanVerification | null>(null);
   const [verifying, setVerifying] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,7 +38,7 @@ export default function CertificateModal({ scan, role, signature, publicKey, onC
       >
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <h3 className="text-sm font-semibold">Sign-off certificate</h3>
-          <button type="button" onClick={onClose} className="text-xs text-slate-500 hover:text-slate-800 print:hidden">
+          <button type="button" aria-label="Close certificate" onClick={onClose} className="text-xs text-slate-500 hover:text-slate-800 print:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
             Close
           </button>
         </div>

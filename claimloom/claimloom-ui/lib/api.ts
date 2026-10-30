@@ -4,13 +4,17 @@ export const API_BASE = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 ).replace(/\/+$/, "");
 
-export async function ensureSessionToken(role: "Creator" | "Reviewer" | "Admin" = "Reviewer", name = "Judge Reviewer", workspace_id = "default") {
+interface SessionResponse { token: string; role: string; name: string; workspace_id: string; }
+interface ApiError { detail?: string | Array<{ loc?: Array<string | number>; msg?: string }>; message?: string; }
+
+export async function ensureSessionToken(role: "Creator" | "Reviewer" | "Admin" = "Reviewer", name = "Judge Reviewer", workspace_id = "default"): Promise<SessionResponse> {
   const res = await fetch(`${API_BASE}/api/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, name, workspace_id }) });
   if (!res.ok) throw new Error(`Could not establish ${role} session (HTTP ${res.status})`);
   const data = await res.json();
   localStorage.setItem("cl_token", data.token);
   localStorage.setItem("cl_role", data.role || role);
   localStorage.setItem("cl_workspace", data.workspace_id || workspace_id);
+  localStorage.setItem("cl_name", data.name || name);
   return data;
 }
 
@@ -27,12 +31,12 @@ export function getAuthHeaders(extra: Record<string, string> = {}): Record<strin
   };
 }
 
-function formatApiError(errObj: any, status: number): string {
+function formatApiError(errObj: ApiError | null, status: number): string {
   if (!errObj) return `HTTP Error ${status}`;
   if (typeof errObj.detail === "string") return errObj.detail;
   if (Array.isArray(errObj.detail)) {
     return errObj.detail
-      .map((e: any) => `${e.loc ? e.loc.join(".") + ": " : ""}${e.msg || JSON.stringify(e)}`)
+      .map((e) => `${e.loc ? e.loc.join(".") + ": " : ""}${e.msg || JSON.stringify(e)}`)
       .join("; ");
   }
   if (typeof errObj.message === "string") return errObj.message;

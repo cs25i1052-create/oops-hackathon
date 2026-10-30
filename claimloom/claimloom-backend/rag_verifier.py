@@ -52,9 +52,43 @@ def get_kb_version(workspace_id="default"):
         conn.close()
 
 
+def _claim_domain(claim: str, clause: str) -> tuple[str | None, tuple[str, ...]]:
+    """Return a domain and required chunk keywords for this numeric claim."""
+    context = f"{claim} {clause}".lower()
+    if "$" in context or any(word in context for word in ("price", "month", "plan")):
+        return "price", ("price", "plan", "$ ", "$")
+    if "warranty" in context or "year" in context or "yr" in context:
+        return "warranty", ("warranty",)
+    if any(word in context for word in ("km", "range", "charge", "minute", "min")):
+        return "battery", ("battery", "range", "charge", "km")
+    return None, ()
+
+
+def _domain_matches(chunk_text: str, required: tuple[str, ...]) -> bool:
+    normalized = chunk_text.lower()
+    return any(keyword.strip() in normalized for keyword in required)
+
+
+def _topic_numbers(text: str, domain: str, claim: str) -> list[str]:
+    """Extract only values expressed in the same unit/topic as the claim."""
+    number = r"\d+(?:,\d{3})*(?:\.\d+)?"
+    if domain == "price":
+        values = re.findall(rf"\$\s*({number})", text)
+        return [v.replace(",", "") for v in values]
+    if domain == "warranty":
+        values = re.findall(rf"({number})\s*(?:years?|yrs?)\b", text, re.I)
+        return [v.replace(",", "") for v in values]
+    if domain == "battery":
+        unit = r"km\b" if re.search(r"km\b", claim, re.I) else r"minutes?\b|min\b|%"
+        values = re.findall(rf"({number})\s*({unit})", text, re.I)
+        return [v[0].replace(",", "") for v in values]
+    return []
+
+
 def verify_claims(text, workspace_id="default"):
     verified, issues = [], []
     chunks = _chunks()
+    seen_verified, seen_issues = set(), set()
     for match in CLAIM_REGEX.finditer(text or ""):
         claim = match.group(0)
         start = max((text.rfind(mark, 0, match.start()) for mark in ".!?\n"), default=-1) + 1
@@ -62,21 +96,43 @@ def verify_claims(text, workspace_id="default"):
         clause = text[start:min(end_options) + 1 if end_options else len(text)].strip()
         if claim not in clause or not clause:
             continue
+        domain, required = _claim_domain(claim, clause)
+        if not domain:
+            continue
         terms = set(re.findall(r"[a-z]+", clause.lower()))
-        ranked = sorted(chunks, key=lambda c: len(terms & set(re.findall(r"[a-z]+", c["chunk_text"].lower()))), reverse=True)
+        # Filter by domain before ranking: a high lexical or vector score from an
+        # unrelated fact must never supply the correction for this claim.
+        domain_chunks = [c for c in chunks if _domain_matches(c["chunk_text"], required)]
+        ranked = sorted(
+            domain_chunks,
+            key=lambda c: (
+                bool(_topic_numbers(c["chunk_text"], domain, claim)),
+                len(terms & set(re.findall(r"[a-z]+", c["chunk_text"].lower()))),
+            ),
+            reverse=True,
+        )
         if not ranked:
             continue
         best = ranked[0]
         overlap = len(terms & set(re.findall(r"[a-z]+", best["chunk_text"].lower())))
-        if overlap < 2:
+        if overlap < 1:
             continue
         evidence = {"verdict": "Verified", "doc_title": best["doc_title"], "page": best["page_num"], "paragraph": best["paragraph_num"], "excerpt": best["chunk_text"], "similarity": min(.99, .72 + overlap / 100), "chunk_id": best["chunk_id"]}
         numbers = re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", claim.replace("$", ""))
-        expected = re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", best["chunk_text"])
-        if numbers and expected and numbers[0].replace(",", "") != expected[0].replace(",", ""):
-            issues.append({"flagged_text": clause, "suggested_fix": best["chunk_text"], "severity": "High", "violation_type": "Factual", "claim_status": "Contradicted Fact", "explanation": "Claim conflicts with an approved Truth Vault fact.", "evidence": {**evidence, "verdict": "Contradicted"}})
+        expected = _topic_numbers(best["chunk_text"], domain, claim)
+        if not numbers or not expected:
+            continue
+        claim_number = numbers[0].replace(",", "")
+        if claim_number not in expected:
+            issue_key = (match.start(), domain)
+            if issue_key not in seen_issues:
+                issues.append({"flagged_text": clause, "suggested_fix": best["chunk_text"], "severity": "High", "violation_type": "Factual", "claim_status": "Contradicted Fact", "explanation": "Claim conflicts with an approved Truth Vault fact for this topic.", "evidence": {**evidence, "verdict": "Contradicted"}})
+                seen_issues.add(issue_key)
         else:
-            verified.append(evidence)
+            verified_key = (match.start(), best["chunk_id"])
+            if verified_key not in seen_verified:
+                verified.append(evidence)
+                seen_verified.add(verified_key)
     return {"verified_claims": verified, "issues": issues}
 
 

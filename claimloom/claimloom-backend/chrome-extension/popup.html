@@ -12,8 +12,9 @@
         <div class="brand-mark">CL</div>
         <div><h1>ClaimLoom</h1><p>Pre-publication copy check</p></div>
       </header>
+      <label class="toggle-row" for="localBackend"><input id="localBackend" type="checkbox"> Use local backend (localhost:8000)</label>
       <label for="api">Backend URL</label>
-      <input id="api" type="url" placeholder="https://your-service.onrender.com">
+      <input id="api" type="url" value="https://oops-hackathon.onrender.com" aria-label="Backend URL">
       <label for="channel">Channel</label>
       <select id="channel">
         <option value="general">General</option>
@@ -22,7 +23,9 @@
         <option value="billboard">Billboard</option>
         <option value="email">Email</option>
       </select>
-      <button id="scan">Scan selected text</button>
+      <label for="draft">Text to scan (select text on the page or paste here)</label>
+      <textarea id="draft" rows="5" placeholder="Select text on the active page, or paste copy here."></textarea>
+      <button id="scan" type="button">Scan copy</button>
       <p id="status" role="status">Select copy on a page, then run a scan.</p>
       <section id="results" aria-live="polite"></section>
     </main>

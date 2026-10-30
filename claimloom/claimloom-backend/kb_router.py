@@ -11,13 +11,17 @@ from seed_kb import KB_CHUNKS
 router = APIRouter()
 
 
-def _read_chunks():
+def _read_chunks(workspace_id: str = "default"):
+    workspace = (workspace_id or "default").strip() or "default"
     conn = db._connect()
     if not conn:
         return KB_CHUNKS
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT chunk_id,doc_title,page_num,paragraph_num,chunk_text,updated_at FROM public.kb_chunks ORDER BY chunk_id")
+            if workspace == "default":
+                cur.execute("SELECT chunk_id,doc_title,page_num,paragraph_num,chunk_text,updated_at FROM public.kb_chunks WHERE workspace_id=%s ORDER BY chunk_id", (workspace,))
+            else:
+                cur.execute("SELECT chunk_id,doc_title,page_num,paragraph_num,chunk_text,updated_at FROM public.kb_chunks WHERE workspace_id IN ('default', %s) ORDER BY chunk_id", (workspace,))
             rows = cur.fetchall()
         return [{"chunk_id": r[0], "doc_title": r[1], "page_num": r[2], "paragraph_num": r[3], "chunk_text": r[4], "updated_at": str(r[5]) if r[5] else None} for r in rows] or KB_CHUNKS
     except Exception:
@@ -28,7 +32,7 @@ def _read_chunks():
 
 @router.get("/api/kb/sources")
 def get_sources(workspace_id: str = "default"):
-    chunks = _read_chunks()
+    chunks = _read_chunks(workspace_id)
     sources = sorted({c["doc_title"] for c in chunks})
     return {"kb_version": pipeline.get_kb_version(workspace_id), "sources": sources, "chunks": chunks}
 
