@@ -11,6 +11,7 @@ import collab_router
 import db
 import pipeline
 import pdf_engine
+import ratelimit
 from rag_verifier import extract_numbers_with_units, verify_claims, get_kb_version
 from db import get_db_connection
 
@@ -74,6 +75,7 @@ def test_system_health(endpoint, expected_status):
 def test_channel_rules(channel, input_text, expected_flag, monkeypatch):
     """Validates channel-specific constraints."""
     monkeypatch.setattr(ai_client, "AI_MODE", "rules_only")
+    ratelimit.reset_rate_limits()
     with TestClient(main.app) as client:
         response = client.post("/api/scan-text", json={"text": input_text, "channel": channel})
     assert response.status_code == 200, response.text
@@ -86,6 +88,7 @@ def test_ed25519_tamper_signature(monkeypatch):
     monkeypatch.setenv("ALLOW_INSECURE_DEMO_ROLES", "true")
     monkeypatch.delenv("SESSION_ISSUER_SECRET", raising=False)
     monkeypatch.setattr(ai_client, "AI_MODE", "rules_only")
+    ratelimit.reset_rate_limits()
     with TestClient(main.app) as client:
         session = client.post("/api/session", json={"name": "Round 3 Reviewer", "role": "Reviewer", "workspace_id": "default"})
         assert session.status_code == 200, session.text
@@ -113,10 +116,23 @@ def test_ed25519_tamper_signature(monkeypatch):
         finally:
             approval["signature"] = original_signature
 
+        # Test subsequent scan approval verification with previous hash in chain
+        scan2 = client.post("/api/scan-text", json={"text": "Second verified scan with its own chain entry."})
+        assert scan2.status_code == 200, scan2.text
+        scan2_id = scan2.json()["scan_id"]
+        approved2 = client.post(f"/api/scans/{scan2_id}/approve", json={}, headers=headers)
+        assert approved2.status_code == 200, approved2.text
+        valid2 = client.get(f"/api/verify/{scan2_id}")
+        assert valid2.status_code == 200, valid2.text
+        assert valid2.json()["valid"] is True
+        assert valid2.json()["chain_valid"] is True
+        assert valid2.json()["tampered"] is False
+
 
 def test_live_sample_pdf_scan_has_renderable_pages(monkeypatch):
     """The built-in brochure uses the real PDF pipeline and retains its bytes for previews."""
     monkeypatch.setattr(ai_client, "AI_MODE", "rules_only")
+    ratelimit.reset_rate_limits()
     with TestClient(main.app) as client:
         response = client.post(
             "/api/scan-sample-pdf",

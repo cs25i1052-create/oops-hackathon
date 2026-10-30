@@ -85,7 +85,64 @@ export default function CertificateModal({ scan, role, signature, publicKey, onC
             Print or save as PDF
           </button>
         </div>
-        {verification && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs" aria-live="polite">{verification.error || <>Valid: {String(verification.valid)} · Tampered: {String(verification.tampered)} · Chain valid: {String(verification.chain_valid)} · Entry hash: <code className="break-all">{verification.certificate?.entry_hash || "—"}</code></>}</div>}
+        {verification && (
+          <div
+            className={`rounded-xl border p-3.5 text-xs transition-all ${
+              verification.error
+                ? "border-rose-200 bg-rose-50/80 text-rose-800"
+                : verification.valid && !verification.tampered
+                ? "border-emerald-200 bg-emerald-50/70 text-emerald-950 shadow-sm"
+                : "border-amber-200 bg-amber-50/80 text-amber-900"
+            }`}
+            aria-live="polite"
+          >
+            {verification.error ? (
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-rose-600">✕</span>
+                <span>{verification.error}</span>
+              </div>
+            ) : verification.valid && !verification.tampered ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 font-semibold text-emerald-800">
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">
+                    ✓
+                  </span>
+                  <span>Cryptographically Verified &amp; Immutable</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1 text-[11px] text-emerald-900/80">
+                  <div>
+                    <span className="font-medium text-emerald-950">Ed25519 Signature:</span> Valid
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-950">Audit Chain:</span> Intact &amp; Valid
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-950">Tampered:</span> No
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-950">Status:</span> Live Signed
+                  </div>
+                </div>
+                {verification.certificate?.entry_hash && (
+                  <div className="break-all pt-1 text-[10px] text-emerald-800/80">
+                    <span className="font-medium text-emerald-950">Entry hash:</span>{" "}
+                    <code>{verification.certificate.entry_hash}</code>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1 text-amber-900">
+                <div className="flex items-center gap-2 font-semibold text-amber-800">
+                  <span className="text-amber-600">⚠</span>
+                  <span>Verification Discrepancy Detected</span>
+                </div>
+                <p className="text-[11px]">
+                  Valid: {String(verification.valid)} · Tampered: {String(verification.tampered)} · Chain: {String(verification.chain_valid)}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

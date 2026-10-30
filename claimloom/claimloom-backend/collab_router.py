@@ -445,9 +445,10 @@ def approve_scan(
 def verify_scan_approvals(scan_id: str):
     scan = _scan_data(scan_id)
     all_rows = _approval_rows()
-    if not all_rows:
+    target_rows = [r for r in all_rows if r["scan_id"] == scan_id]
+    if not target_rows:
         return {"scan_id": scan_id, "valid": False, "approvals": [], "reason": "No signed approval found."}
-    expected_prev: Optional[str] = None
+
     versions_by_no: Dict[int, Dict[str, Any]] = {
         int(v["version_no"]): dict(v) for v in _memory_versions.get(scan_id, [])
     }
@@ -471,35 +472,56 @@ def verify_scan_approvals(scan_id: str):
         versions_by_no = {int(v["version_no"]): dict(v) for v in _memory_versions.get(scan_id, [])}
     if not versions_by_no:
         versions_by_no[1] = {"version_no": 1, "text_snapshot": scan.get("redacted_text") or "", "score": int(scan.get("readiness_score") or 0)}
-    chain_valid = True
+
+    all_entries_by_hash = {r["entry_hash"]: r for r in all_rows if r.get("entry_hash")}
     verified = []
-    target_rows = []
-    for row in all_rows:
+    scan_chain_valid = True
+
+    for i, row in enumerate(target_rows):
         calculated = signing.approval_entry_hash(
             scan_id=row["scan_id"], version_no=row["version_no"], text_sha256=row["text_sha256"],
             score=row["score"], reviewer=row["reviewer"], role=row["role"],
             prev_hash=row["prev_hash"], created_at=row["created_at"],
         )
-        row_valid = row["prev_hash"] == expected_prev and calculated == row["entry_hash"] and signing.verify_entry_hash(row["entry_hash"], row["signature"])
-        chain_valid = chain_valid and row_valid
-        expected_prev = row["entry_hash"]
-        if row["scan_id"] == scan_id:
-            try:
-                signed_version = versions_by_no.get(int(row["version_no"]))
-                if not signed_version:
-                    raise HTTPException(status_code=404, detail="Scan version not found.")
-                content_matches = hashlib.sha256(signed_version["text_snapshot"].encode("utf-8")).hexdigest() == row["text_sha256"]
-            except HTTPException:
+        sig_valid = signing.verify_entry_hash(row["entry_hash"], row["signature"])
+        hash_valid = (calculated == row["entry_hash"])
+
+        try:
+            signed_version = versions_by_no.get(int(row["version_no"]))
+            if not signed_version:
                 content_matches = False
-            target_rows.append({**row, "valid": row_valid and content_matches, "content_matches": content_matches})
-    verified = target_rows
+            else:
+                content_matches = (
+                    hashlib.sha256(signed_version["text_snapshot"].encode("utf-8")).hexdigest()
+                    == row["text_sha256"]
+                )
+        except Exception:
+            content_matches = False
+
+        if i == 0:
+            if row.get("prev_hash"):
+                pred = all_entries_by_hash.get(row["prev_hash"])
+                link_valid = (pred is None or signing.verify_entry_hash(pred["entry_hash"], pred["signature"]))
+            else:
+                link_valid = True
+        else:
+            link_valid = (row.get("prev_hash") == target_rows[i - 1]["entry_hash"])
+
+        row_valid = sig_valid and hash_valid and content_matches and link_valid
+        if not (sig_valid and hash_valid and link_valid):
+            scan_chain_valid = False
+
+        verified.append({**row, "valid": row_valid, "content_matches": content_matches})
+
     latest_version = _latest_version(scan_id, scan, None)
     latest_approval = verified[-1] if verified else None
     tampered = bool(latest_approval and (
         not latest_approval["content_matches"]
         or latest_approval["version_no"] != latest_version["version_no"]
     ))
+    chain_valid = scan_chain_valid and bool(verified)
     valid = bool(verified) and chain_valid and all(a["valid"] for a in verified) and not tampered
+
     return {
         "scan_id": scan_id,
         "valid": valid,
