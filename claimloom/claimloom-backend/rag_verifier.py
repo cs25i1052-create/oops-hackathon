@@ -1,3 +1,4 @@
+
 """Lazy, optional Gemini-assisted Truth Vault verifier with local retrieval fallback."""
 import os
 import re

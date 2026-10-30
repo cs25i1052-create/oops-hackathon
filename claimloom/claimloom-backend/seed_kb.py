@@ -1,3 +1,4 @@
+
 """Seed searchable Truth Vault chunks without deleting evidence history."""
 import hashlib
 
