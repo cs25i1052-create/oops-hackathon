@@ -7,7 +7,7 @@ async function loadSettings() {
   $("localBackend").checked = saved.localBackend;
   $("api").value = saved.localBackend ? LOCAL_API : (saved.api || DEFAULT_API);
   $("api").disabled = saved.localBackend;
-  $("workspace").value = saved.workspace;
+  $("workspace").value = saved.workspace || "default";
   $("channel").value = saved.channel;
   $("draft").value = saved.draft;
 }
@@ -68,7 +68,7 @@ async function scanCopy() {
   try {
     const localBackend = $("localBackend").checked;
     const api = (localBackend ? LOCAL_API : $("api").value.trim()).replace(/\/+$/, "");
-    const workspace = $("workspace").value;
+    const workspace = $("workspace").value || "default";
     const channel = $("channel").value;
     let text = $("draft").value.trim();
     if (!api) throw new Error("Enter a backend URL first.");

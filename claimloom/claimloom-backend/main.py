@@ -2,15 +2,18 @@ from dotenv import load_dotenv
 
 load_dotenv()  # must run before the other imports read environment variables
 
+import io
 import json
 import os
 import threading
 import time
+import zipfile
 from collections import OrderedDict
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 import ai_client
@@ -425,3 +428,26 @@ def get_ambiguity_radar(suggest: bool = False):
             item["suggested_rewording"] = _suggest_rewording(rule, c["reasons"][:5]) or None
         results.append(item)
     return {"ambiguity_radar": results}
+
+
+@app.get("/api/extension/download")
+def download_chrome_extension():
+    """Package the ClaimLoom Chrome Extension bundle as a downloadable zip archive."""
+    ext_dir = Path(__file__).resolve().parent / "chrome-extension"
+    if not ext_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Chrome extension bundle not found.")
+
+    zip_buffer = io.BytesIO()
+    target_files = ["manifest.json", "popup.html", "popup.css", "popup.js"]
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fname in target_files:
+            fpath = ext_dir / fname
+            if fpath.is_file():
+                zf.write(fpath, arcname=fname)
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="ClaimLoom-Chrome-Extension.zip"'},
+    )
+

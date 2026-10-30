@@ -192,3 +192,34 @@ def test_chunk3_price_update_syncs_rule5(monkeypatch):
 
         # Reset demo to restore state
         client.post("/api/admin/reset-demo")
+
+
+def test_extension_zip_download():
+    """Verify that GET /api/extension/download returns a valid zip archive with extension assets."""
+    import io
+    import zipfile
+
+    with TestClient(main.app) as client:
+        response = client.get("/api/extension/download")
+    assert response.status_code == 200
+    assert "application/zip" in response.headers.get("content-type", "")
+    assert response.content.startswith(b"PK")
+
+    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+        namelist = zf.namelist()
+        assert "manifest.json" in namelist
+        assert "popup.js" in namelist
+
+
+def test_kb_sources_endpoint():
+    """Verify that GET /api/kb/sources returns chunks and kb_version."""
+    with TestClient(main.app) as client:
+        response = client.get("/api/kb/sources?workspace_id=default")
+    assert response.status_code == 200
+    data = response.json()
+    assert "chunks" in data
+    assert "kb_version" in data
+    assert len(data["chunks"]) > 0
+    assert "doc_title" in data["chunks"][0]
+
+

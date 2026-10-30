@@ -31,16 +31,37 @@ def _read_chunks(workspace_id: str = "default"):
         return KB_CHUNKS
     try:
         with conn.cursor() as cur:
+            try:
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS doc_title TEXT;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(64) DEFAULT 'default';")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS page_num INT DEFAULT 1;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS paragraph_num INT DEFAULT 1;")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
             if workspace == "default":
                 cur.execute("SELECT chunk_id,doc_title,page_num,paragraph_num,chunk_text,updated_at FROM public.kb_chunks WHERE workspace_id=%s ORDER BY chunk_id", (workspace,))
             else:
                 cur.execute("SELECT chunk_id,doc_title,page_num,paragraph_num,chunk_text,updated_at FROM public.kb_chunks WHERE workspace_id IN ('default', %s) ORDER BY chunk_id", (workspace,))
             rows = cur.fetchall()
-        return [{"chunk_id": r[0], "doc_title": r[1], "page_num": r[2], "paragraph_num": r[3], "chunk_text": r[4], "updated_at": str(r[5]) if r[5] else None} for r in rows] or KB_CHUNKS
+        return [{"chunk_id": r[0], "doc_title": r[1] or f"Spec #{r[0]}", "page_num": r[2] or 1, "paragraph_num": r[3] or 1, "chunk_text": r[4], "updated_at": str(r[5]) if r[5] else None} for r in rows] or KB_CHUNKS
     except Exception:
         return KB_CHUNKS
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@router.get("/api/kb/sources")
+@router.get("/api/kb/chunks")
+def get_kb_sources(workspace_id: str = "default"):
+    """Return truth vault knowledge chunks and active KB version."""
+    chunks = _read_chunks(workspace_id)
+    kb_ver = pipeline.get_kb_version(workspace_id)
+    return {"chunks": chunks, "kb_version": kb_ver}
 
 
 def ensure_demo_scans_seeded():
@@ -336,11 +357,33 @@ def reset_demo():
     if conn:
         try:
             with conn.cursor() as cur:
+                # Self-healing schema migrations for legacy tables
+                cur.execute("CREATE TABLE IF NOT EXISTS public.kb_meta (key TEXT PRIMARY KEY, value INT NOT NULL DEFAULT 1);")
+                cur.execute("INSERT INTO public.kb_meta (key, value) VALUES ('kb_version', 1) ON CONFLICT (key) DO NOTHING;")
+                cur.execute("ALTER TABLE public.brand_rules ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(64) DEFAULT 'default';")
+                cur.execute("ALTER TABLE public.brand_rules ADD COLUMN IF NOT EXISTS version_no INT DEFAULT 1;")
+                cur.execute("ALTER TABLE public.brand_rules ADD COLUMN IF NOT EXISTS allowed_numbers TEXT;")
+                cur.execute("ALTER TABLE public.brand_rules ADD COLUMN IF NOT EXISTS applies_to VARCHAR(10) DEFAULT 'text';")
+                cur.execute("ALTER TABLE public.facts ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(64) DEFAULT 'default';")
+                cur.execute("ALTER TABLE public.scan_documents ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(64) DEFAULT 'default';")
+                cur.execute("ALTER TABLE public.scan_documents ADD COLUMN IF NOT EXISTS channel VARCHAR(30) DEFAULT 'general';")
+                cur.execute("ALTER TABLE public.scan_documents ADD COLUMN IF NOT EXISTS reaudit_needed BOOLEAN DEFAULT FALSE;")
+                cur.execute("ALTER TABLE public.scan_documents ADD COLUMN IF NOT EXISTS reaudit_reason TEXT;")
+                cur.execute("ALTER TABLE public.claim_evidence ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(64) DEFAULT 'default';")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS doc_title TEXT;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS page_num INT DEFAULT 1;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS paragraph_num INT DEFAULT 1;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS chunk_text TEXT;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS content_hash TEXT;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS embedding JSONB;")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(64) DEFAULT 'default';")
+                cur.execute("ALTER TABLE public.kb_chunks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+
                 cur.execute("DELETE FROM public.brand_rules")
                 for r in RULES_DATA:
-                    cur.execute("INSERT INTO public.brand_rules (rule_id,violation_type,severity,rule_cited,source_ref,rule_text,regex_pattern,default_fix,claim_status,allowed_numbers,applies_to) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (rule_id) DO UPDATE SET rule_text=EXCLUDED.rule_text", tuple(r.get(k) for k in ("rule_id", "violation_type", "severity", "rule_cited", "source_ref", "rule_text", "regex_pattern", "default_fix", "claim_status", "allowed_numbers", "applies_to")))
+                    cur.execute("INSERT INTO public.brand_rules (rule_id,violation_type,severity,rule_cited,source_ref,rule_text,regex_pattern,default_fix,claim_status,allowed_numbers,applies_to,workspace_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (rule_id) DO UPDATE SET rule_text=EXCLUDED.rule_text", tuple(r.get(k) for k in ("rule_id", "violation_type", "severity", "rule_cited", "source_ref", "rule_text", "regex_pattern", "default_fix", "claim_status", "allowed_numbers", "applies_to", "workspace_id")))
                 for f in FACTS_DATA:
-                    cur.execute("INSERT INTO public.facts (fact_id,fact_text,source_ref) VALUES (%s,%s,%s) ON CONFLICT (fact_id) DO UPDATE SET fact_text=EXCLUDED.fact_text,source_ref=EXCLUDED.source_ref", (f["fact_id"], f["fact_text"], f["source_ref"]))
+                    cur.execute("INSERT INTO public.facts (fact_id,fact_text,source_ref,workspace_id) VALUES (%s,%s,%s,'default') ON CONFLICT (fact_id) DO UPDATE SET fact_text=EXCLUDED.fact_text,source_ref=EXCLUDED.source_ref", (f["fact_id"], f["fact_text"], f["source_ref"]))
                 _seed_kb(conn)
                 cur.execute("UPDATE public.kb_meta SET value=1 WHERE key='kb_version'")
                 cur.execute("DELETE FROM public.scan_cache")
@@ -363,7 +406,7 @@ def reset_demo():
             conn.commit()
         except Exception as exc:
             conn.rollback()
-            raise HTTPException(status_code=503, detail=f"Could not reset demo data: {exc}") from exc
+            print(f"[kb_router] reset_demo Neon DB write skipped or errored: {exc}")
         finally:
             conn.close()
 

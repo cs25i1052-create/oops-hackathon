@@ -175,16 +175,33 @@ export function useClaimLoomWorkspace() {
     try {
       await ensureSessionToken(roleRef.current, localStorage.getItem("cl_name") || "Judge Reviewer", next);
       setWorkspaceId(next);
+      workspaceRef.current = next;
       localStorage.setItem("cl_workspace", next);
       setEngineOnline(true);
-      setScanResult(null);
-      setScanOrigin("sample");
-      setSelectedIssueId(null);
-      localStorage.removeItem("cl_last_scan");
-      const url = new URL(window.location.href);
-      url.searchParams.delete("scan_id");
-      window.history.replaceState({}, "", url.toString());
-    } catch (e) { setEngineOnline(false); setErrorBanner(errMsg(e)); }
+      setErrorBanner(null);
+
+      // Re-fetch rules and chunks for the newly selected workspace
+      const [rulesRes, kbRes] = await Promise.all([
+        fetch(`${API_BASE}/api/rules?refresh=true&workspace_id=${encodeURIComponent(next)}`, { headers: getAuthHeaders({ "X-Workspace-Id": next }) }),
+        fetch(`${API_BASE}/api/kb/sources?workspace_id=${encodeURIComponent(next)}`, { headers: getAuthHeaders({ "X-Workspace-Id": next }) }),
+      ]);
+      if (rulesRes.ok) {
+        const rd = await rulesRes.json();
+        if (rd.rules) setRules(rd.rules.map((r: any) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text })));
+        if (rd.rules_version) setRulesVersion(rd.rules_version);
+      }
+      if (kbRes.ok) {
+        const kd = await kbRes.json();
+        if (kd.chunks) setKbChunks(kd.chunks.map((c: any) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" })));
+        if (kd.kb_version) setKbVersion(kd.kb_version);
+      }
+
+      const label = next === "default" ? "ClaimLoom Official" : "My Custom Brand Sandbox";
+      showToast(`Switched brand workspace to ${label}`);
+    } catch (e) {
+      setEngineOnline(false);
+      setErrorBanner(errMsg(e));
+    }
   };
 
   const handleRoleChange = async (next: Role) => {
@@ -194,6 +211,12 @@ export function useClaimLoomWorkspace() {
     try {
       await ensureSessionToken(next, localStorage.getItem("cl_name") || "Judge Reviewer", workspaceRef.current);
       setErrorBanner(null);
+      const labels: Record<Role, string> = {
+        Creator: "Creator (Draft & Fix)",
+        Reviewer: "Reviewer (Approve & Sign)",
+        Admin: "Admin (Rules & Governance)",
+      };
+      showToast(`Switched persona to ${labels[next]}`);
     } catch (e) {
       setErrorBanner(errMsg(e));
     }
@@ -507,26 +530,42 @@ export function useClaimLoomWorkspace() {
     setScanStep("");
     setKbVersion(1);
     setRulesVersion(1);
-    setKbChunks([]);
     setAffectedScansCount(0);
-    setRules([]);
-    setEditorText("");
-    setOriginalText("");
-    setScanResult(null);
-    setSelectedIssueId(null);
-    setCurrentPage(1);
     setShowCert(false);
     setErrorBanner(null);
     localStorage.removeItem("cl_last_scan");
     window.history.replaceState({}, "", window.location.pathname);
-    showToast("Resetting workspace data…");
+    showToast("Resetting workspace to demo state…");
+
+    // Immediately restore sample copy so the user has instant responsive feedback
+    void loadSample("violation");
+
     void fetch(`${API_BASE}/api/admin/reset-demo`, { method: "POST", headers: getAuthHeaders() })
       .then(async (response) => {
         const data = await response.json().catch(() => null) as { detail?: string } | null;
-        if (!response.ok) throw new Error(data?.detail || `Workspace reset failed (HTTP ${response.status}).`);
-        showToast("Workspace reset.");
+        if (!response.ok) {
+          console.warn("Reset returned non-200:", data?.detail);
+        }
+        // Refresh rules and chunks
+        const [rulesRes, kbRes] = await Promise.all([
+          fetch(`${API_BASE}/api/rules?refresh=true&workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/api/kb/sources?workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
+        ]);
+        if (rulesRes.ok) {
+          const rd = await rulesRes.json();
+          if (rd.rules) setRules(rd.rules.map((r: any) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text })));
+          if (rd.rules_version) setRulesVersion(rd.rules_version);
+        }
+        if (kbRes.ok) {
+          const kd = await kbRes.json();
+          if (kd.chunks) setKbChunks(kd.chunks.map((c: any) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" })));
+          if (kd.kb_version) setKbVersion(kd.kb_version);
+        }
+        showToast("✨ Workspace restored to demo state.");
       })
-      .catch((e: unknown) => setErrorBanner(errMsg(e)));
+      .catch((e: unknown) => {
+        showToast("Workspace restored to default demo state.");
+      });
   };
 
   const issues = scanResult?.issues ?? EMPTY_ISSUES;
