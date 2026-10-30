@@ -390,6 +390,12 @@ def reset_demo():
                 for scan_id, text in demo_scans:
                     payload = main._mem_scans[scan_id]
                     cur.execute(
+                        """INSERT INTO public.scans (scan_id, readiness_score, status, input_type, payload)
+                           VALUES (%s, 100, 'approved', 'text', %s::jsonb)
+                           ON CONFLICT (scan_id) DO UPDATE SET readiness_score=100, status='approved', payload=EXCLUDED.payload""",
+                        (scan_id, json.dumps(payload)),
+                    )
+                    cur.execute(
                         """INSERT INTO public.scan_documents
                            (scan_id, workspace_id, channel, redacted_text, result_json, reaudit_needed, reaudit_reason)
                            VALUES (%s, 'default', 'general', %s, %s::jsonb, FALSE, NULL)

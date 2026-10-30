@@ -71,13 +71,21 @@ def get_kb_version(workspace_id="default"):
 
 def _claim_domain(claim: str, clause: str) -> tuple[str | None, tuple[str, ...]]:
     """Return a domain and required chunk keywords for this numeric claim."""
-    context = f"{claim} {clause}".lower()
-    if "$" in context or any(word in context for word in ("price", "month", "plan")):
-        return "price", ("price", "plan", "$ ", "$")
-    if "warranty" in context or "year" in context or "yr" in context:
+    claim_lower = claim.lower()
+    if any(u in claim_lower for u in ("km", "range", "charge", "minute", "min")):
+        return "battery", ("battery", "range", "charge", "km")
+    if any(u in claim_lower for u in ("warranty", "year", "yr")):
         return "warranty", ("warranty",)
+    if "$" in claim_lower or any(u in claim_lower for u in ("month", "mo", "/mo", "price", "plan")):
+        return "price", ("price", "plan", "$ ", "$")
+
+    context = f"{claim} {clause}".lower()
     if any(word in context for word in ("km", "range", "charge", "minute", "min")):
         return "battery", ("battery", "range", "charge", "km")
+    if "warranty" in context or "year" in context or "yr" in context:
+        return "warranty", ("warranty",)
+    if "$" in context or any(word in context for word in ("price", "month", "plan")):
+        return "price", ("price", "plan", "$ ", "$")
     return None, ()
 
 

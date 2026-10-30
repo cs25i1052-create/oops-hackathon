@@ -61,7 +61,7 @@ CHANNEL_REGEX_RULES: Dict[str, List[Dict]] = {
             "rule_cited": "Channel Rule (Email): Deliverability & Spam-Trigger Filter",
             "source_ref": "Channel Playbook 2026 — Email Compliance",
             "rule_text": "Avoid high-pressure spam trigger phrases ('Act now', '100% free', 'Urgent action required', 'Click below immediately') that route emails to spam folders.",
-            "regex_pattern": r"(?i)\b(?:act\s+now|urgent\s+action\s+required|100%\s+free|free\s+money|no\s+obligation|click\s+below\s+immediately|once\s+in\s+a\s+lifetime)\b",
+            "regex_pattern": r"(?i)\b(?:act\s+now|urgent\s+action\s+required|100%\s+free|no\s+obligation|click\s+below\s+immediately|once\s+in\s+a\s+lifetime)\b",
             "default_fix": "explore the details",
         },
         {
@@ -392,8 +392,14 @@ def run_rule_engine(
 
 
 def _drop_overlaps(issues: List[IssueItem]) -> List[IssueItem]:
-    """If two rules flag the same words, keep the more severe one."""
-    issues.sort(key=lambda i: (i.start if i.start is not None else -1, -WEIGHTS.get(i.severity, 12)))
+    """If two rules flag the same words, keep the more severe one, preferring channel-specific rules."""
+    issues.sort(
+        key=lambda i: (
+            i.start if i.start is not None else -1,
+            -WEIGHTS.get(i.severity, 12),
+            -(1 if (i.rule_id and i.rule_id >= 1000) else 0),
+        )
+    )
     kept: List[IssueItem] = []
     for iss in issues:
         s = iss.start if iss.start is not None else -1
