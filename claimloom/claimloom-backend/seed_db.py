@@ -151,6 +151,14 @@ FACTS_DATA = [
     {"fact_id": 103, "fact_text": "ClaimLoom Pro Plan subscription price is $29/month or $290/year.", "source_ref": "Approved Pricing Sheet Q4, p.1"},
     {"fact_id": 104, "fact_text": "Standard product warranty covers 3 years or 30,000 km.", "source_ref": "Warranty Policy Doc, p.3"},
     {"fact_id": 105, "fact_text": "Official brand hex palette is Indium Blue (#1E3A8A) and Stark Orange (#FF5500).", "source_ref": "Visual Design System, p.6"},
+    {"fact_id": 106, "fact_text": "Enterprise service level agreement guarantees 99.9% uptime.", "source_ref": "Enterprise SLA, p.1"},
+    {"fact_id": 107, "fact_text": "Refer to product users as Creators or Team Members.", "source_ref": "Brand Guide, p.5"},
+    {"fact_id": 108, "fact_text": "Text contrast must meet at least 4.5:1 under WCAG AA.", "source_ref": "Accessibility Handbook, p.4"},
+    {"fact_id": 109, "fact_text": "LinkedIn copy should be professional and avoid hype slang or excessive hashtags.", "source_ref": "Channel Guidelines, p.1"},
+    {"fact_id": 110, "fact_text": "Instagram captions should be concise and contain no raw URLs in the caption body.", "source_ref": "Channel Guidelines, p.2"},
+    {"fact_id": 111, "fact_text": "Billboard copy should contain no more than 12 words and no clickable link prompts.", "source_ref": "Channel Guidelines, p.3"},
+    {"fact_id": 112, "fact_text": "Marketing email copy should state a clear value proposition and avoid spam-trigger phrasing.", "source_ref": "Channel Guidelines, p.4"},
+    {"fact_id": 113, "fact_text": "Use the approved colors Indium Blue (#1E3A8A), Stark Orange (#FF5500), White (#FFFFFF), and Slate (#0F172A).", "source_ref": "Visual Design System, p.6"},
 ]
 
 DEMO_FLAG_EVENTS = [
@@ -232,6 +240,9 @@ def seed_neon_database():
         for ev in DEMO_FLAG_EVENTS:
             cur.execute("INSERT INTO flag_events (scan_id, rule_id, action, reason) VALUES (%s, %s, %s, %s);", ev)
 
+    cur.execute("CREATE TABLE IF NOT EXISTS public.kb_chunks (chunk_id INT PRIMARY KEY, doc_title TEXT NOT NULL, page_num INT NOT NULL DEFAULT 1, paragraph_num INT NOT NULL DEFAULT 1, chunk_text TEXT NOT NULL, content_hash TEXT, embedding JSONB, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+    cur.execute("CREATE TABLE IF NOT EXISTS public.kb_meta (key TEXT PRIMARY KEY, value INT NOT NULL DEFAULT 1);")
+    cur.execute("INSERT INTO public.kb_meta (key, value) VALUES ('kb_version', 1) ON CONFLICT (key) DO NOTHING;")
     conn.commit()
     cur.close()
     conn.close()

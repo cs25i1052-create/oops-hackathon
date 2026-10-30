@@ -25,7 +25,7 @@ def _load_private_key() -> Ed25519PrivateKey:
             os.getenv("SIGNING_KEY_FALLBACK_SECRET")
             or os.getenv("SECRET_KEY")
             or os.getenv("SESSION_SECRET")
-            or "claimloom-development-signing-key-change-before-production"
+            or hashlib.sha256(os.getenv("DATABASE_URL", "").encode()).hexdigest()
         )
         return Ed25519PrivateKey.from_private_bytes(hashlib.sha256(fallback_secret.encode("utf-8")).digest())
     raw = configured.encode("utf-8")

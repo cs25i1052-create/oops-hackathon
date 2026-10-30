@@ -20,12 +20,12 @@ _buckets: Dict[str, Tuple[float, float]] = {}
 
 
 def get_client_ip(request: Request) -> str:
-    """Extracts the real client IP from the first entry in X-Forwarded-For."""
+    """Extracts the client IP from the last proxy-appended X-Forwarded-For entry."""
     xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
     if xff:
-        first_ip = xff.split(",")[0].strip()
-        if first_ip:
-            return first_ip
+        last_ip = xff.split(",")[-1].strip()
+        if last_ip:
+            return last_ip
     real_ip = request.headers.get("x-real-ip")
     if real_ip and real_ip.strip():
         return real_ip.strip()
@@ -73,6 +73,18 @@ def consume_token(ip: str, cost: float = 1.0) -> Tuple[bool, float, float]:
 def rate_limit_scan(request: Request) -> str:
     """FastAPI dependency for scan endpoints. Raises HTTP 429 with Retry-After if bucket is empty."""
     ip = get_client_ip(request)
+    global_capacity = 120.0
+    global_refill = global_capacity / 300.0
+    now = time.monotonic()
+    with _lock:
+        tokens, last_ts = _buckets.get("_GLOBAL_", (global_capacity, now))
+        tokens = min(global_capacity, tokens + max(0.0, now - last_ts) * global_refill)
+        if tokens < 1.0:
+            retry_after = (1.0 - tokens) / global_refill
+            _buckets["_GLOBAL_"] = (tokens, now)
+            wait_sec = max(1, int(math.ceil(retry_after)))
+            raise HTTPException(status_code=429, detail="Global scan rate limit exceeded.", headers={"Retry-After": str(wait_sec)})
+        _buckets["_GLOBAL_"] = (tokens - 1.0, now)
     allowed, _remaining, retry_after = consume_token(ip, cost=1.0)
     if not allowed:
         wait_sec = max(1, int(math.ceil(retry_after)))

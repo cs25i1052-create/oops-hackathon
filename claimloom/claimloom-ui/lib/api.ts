@@ -4,6 +4,16 @@ export const API_BASE = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 ).replace(/\/+$/, "");
 
+export async function ensureSessionToken(role: "Creator" | "Reviewer" | "Admin" = "Reviewer", name = "Judge Reviewer", workspace_id = "default") {
+  const res = await fetch(`${API_BASE}/api/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, name, workspace_id }) });
+  if (!res.ok) throw new Error(`Could not establish ${role} session (HTTP ${res.status})`);
+  const data = await res.json();
+  localStorage.setItem("cl_token", data.token);
+  localStorage.setItem("cl_role", data.role || role);
+  localStorage.setItem("cl_workspace", data.workspace_id || workspace_id);
+  return data;
+}
+
 export function getAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
   if (typeof window === "undefined") return extra;
   const token = localStorage.getItem("cl_token") || "";

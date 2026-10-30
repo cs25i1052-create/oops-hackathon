@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { runTextScan, uploadAssetForScan, syncScanIdToUrl } from "../lib/api";
+import { runTextScan, uploadAssetForScan, syncScanIdToUrl, ensureSessionToken } from "../lib/api";
 import { approveScan, fetchScan, waitForEngine, withColdStartRetry } from "../lib/client";
 import {
   MOCK_SCAN_RESPONSE_V3,
@@ -24,8 +24,6 @@ import CertificateModal from "../components/CertificateModal";
 
 const MAX_UPLOAD = 5 * 1024 * 1024;
 const MIN_CHARS = 10;
-const DEMO_SIGNATURE =
-  "ed25519:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
 const EMPTY_ISSUES: Issue[] = [];
 
 const TABS: { id: Tab; label: string }[] = [
@@ -80,10 +78,11 @@ export default function ClaimLoomWorkspace() {
   const [fixesPending, setFixesPending] = useState(false);
 
   const [showCert, setShowCert] = useState(false);
-  const [signature, setSignature] = useState<{ value: string; live: boolean }>({
-    value: DEMO_SIGNATURE,
+  const [signature, setSignature] = useState<{ value: string; live: boolean; entry_hash?: string; text_sha256?: string; prev_hash?: string; reviewer?: string }>({
+    value: "",
     live: false,
   });
+  const [certificatePublicKey, setCertificatePublicKey] = useState<string | null>(null);
 
   const [kbChunks, setKbChunks] = useState<KBChunkItem[]>(INITIAL_KB_CHUNKS);
   const [affectedScansCount, setAffectedScansCount] = useState(0);
@@ -130,9 +129,12 @@ export default function ClaimLoomWorkspace() {
 
   useEffect(() => {
     const savedRole = localStorage.getItem("cl_role");
-    if (savedRole === "Creator" || savedRole === "Reviewer" || savedRole === "Admin") setRole(savedRole as Role);
+    const initialRole = savedRole === "Creator" || savedRole === "Reviewer" || savedRole === "Admin" ? savedRole as Role : "Reviewer";
+    setRole(initialRole);
     const savedWs = localStorage.getItem("cl_workspace");
-    if (savedWs === "default" || savedWs === "custom") setWorkspaceId(savedWs);
+    const initialWs = savedWs === "default" || savedWs === "custom" ? savedWs : "default";
+    setWorkspaceId(initialWs);
+    ensureSessionToken(initialRole, "Judge Reviewer", initialWs).catch((e) => setErrorBanner(e.message));
   }, []);
 
   useEffect(() => {
@@ -196,11 +198,13 @@ export default function ClaimLoomWorkspace() {
   const handleWorkspaceChange = (next: "default" | "custom") => {
     setWorkspaceId(next);
     localStorage.setItem("cl_workspace", next);
+    ensureSessionToken(roleRef.current, "Judge Reviewer", next).catch((e) => setErrorBanner(e.message));
   };
 
   const handleRoleChange = (next: Role) => {
     setRole(next);
     localStorage.setItem("cl_role", next);
+    ensureSessionToken(next, "Judge Reviewer", localStorage.getItem("cl_workspace") || "default").catch((e) => setErrorBanner(e.message));
   };
 
   const handleRunTextAudit = async () => {
@@ -377,18 +381,25 @@ export default function ClaimLoomWorkspace() {
     }
   };
 
+  const handleActivityReaudit = useCallback((needed: boolean, note?: string | null) => {
+    setScanResult((current) => current ? { ...current, status: needed ? "needs_reaudit" : current.status, reaudit: { needed, note: note || null } } : current);
+  }, []);
+
   const handleApprove = useCallback(async () => {
     const current = scanRef.current;
     if (!current) return;
 
-    let sig = { value: DEMO_SIGNATURE, live: false };
+    let sig = { value: "", live: false };
     if (originRef.current === "live") {
-      const result = await approveScan(current.scan_id, roleRef.current);
-      if (!result.signature) {
+      const snapshot = editorRef.current !== originalText ? editorRef.current : undefined;
+      const result = await approveScan(current.scan_id, roleRef.current, snapshot);
+      if (!result.approval?.signature) {
         setErrorBanner(`Approval failed: ${result.error ?? "unknown error"}. The scan was not signed.`);
         return;
       }
-      sig = { value: result.signature, live: true };
+      sig = { value: result.approval.signature, live: true };
+      Object.assign(sig, { entry_hash: result.approval.entry_hash, text_sha256: result.approval.text_sha256, prev_hash: result.approval.prev_hash, reviewer: result.approval.reviewer });
+      setCertificatePublicKey(result.public_key);
     }
     setSignature(sig);
     const approved: ScanResponse = { ...current, status: "approved" };
@@ -397,35 +408,26 @@ export default function ClaimLoomWorkspace() {
     setShowCert(true);
   }, []);
 
-  const handleSimulatePriceSync = useCallback(() => {
-    const nextVer = kbVersion + 1;
-    setKbVersion(nextVer);
-    setKbChunks((prev) =>
-      prev.map((c) =>
-        c.chunk_id === 3
-          ? {
-              ...c,
-              fact_text: "The ClaimLoom Pro Plan subscription costs $39/month billed monthly, or $390/year (updated).",
-              updated_at: `Synced v${nextVer}`,
-            }
-          : c
-      )
-    );
-    setAffectedScansCount(2);
-    const current = scanRef.current;
-    if (current) {
-      setScanResult({
-        ...current,
-        kb_version: nextVer,
-        status: "needs_reaudit",
-        reaudit: {
-          needed: true,
-          note: `Pricing fact in Approved_Pricing_Policy.md changed to $39/mo (KB v${nextVer}).`,
-        },
+  const handleSimulatePriceSync = useCallback(async () => {
+    const chunk = kbChunks.find((item) => item.chunk_id === 3);
+    if (!chunk) return;
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/kb/chunks/3`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("cl_token") || ""}`, "X-Workspace-Id": localStorage.getItem("cl_workspace") || "default" },
+        body: JSON.stringify({ chunk_text: "ClaimLoom Pro Plan subscription price is $39/month or $390/year." }),
       });
-    }
-    showToast(`Truth Vault synced to v${nextVer}. 2 approved drafts need a re-audit.`);
-  }, [kbVersion, showToast]);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Knowledge sync failed");
+      setKbVersion(data.kb_version);
+      setAffectedScansCount(data.affected_count || 0);
+      const current = scanRef.current;
+      if (current && (data.affected_scans || []).includes(current.scan_id)) {
+        const fresh = await fetchScan(current.scan_id);
+        setScanResult(fresh);
+      }
+      showToast(`Truth Vault updated. ${data.affected_count || 0} scans need re-audit.`);
+    } catch (e) { setErrorBanner(e instanceof Error ? e.message : "Knowledge sync failed"); }
+  }, [kbChunks, showToast]);
 
   const handleAddRule = useCallback(
     (name: string, pattern: string) => {
@@ -652,6 +654,8 @@ export default function ClaimLoomWorkspace() {
                 isApproved={isApproved}
                 onApprove={handleApprove}
                 onViewCertificate={openCert}
+                scanId={scanResult?.scan_id}
+                onReaudit={handleActivityReaudit}
               />
             </div>
             <div className="lg:col-span-5">
@@ -691,16 +695,18 @@ export default function ClaimLoomWorkspace() {
             onSync={handleSimulatePriceSync}
             rules={rules}
             onAddRule={handleAddRule}
+            onDataLoaded={(loadedRules, loadedChunks, nextRulesVersion, nextKbVersion) => { setRules(loadedRules); setKbChunks(loadedChunks); setRulesVersion(nextRulesVersion); setKbVersion(nextKbVersion); }}
+            onAffected={async (count, ids) => { setAffectedScansCount(count); const current = scanRef.current; if (current && ids.includes(current.scan_id)) { try { setScanResult(await fetchScan(current.scan_id)); } catch { /* retain current view if refresh is unavailable */ } } }}
           />
         </div>
 
         <div className={activeTab === "radar" ? "block" : "hidden"}>
-          <RadarTab ruleOptimized={ruleOptimized} onOptimize={handleOptimizeRule} />
+          <RadarTab role={role} />
         </div>
       </main>
 
       {showCert && scanResult && (
-        <CertificateModal scan={scanResult} role={role} signature={signature} onClose={closeCert} />
+        <CertificateModal scan={scanResult} role={role} signature={signature} publicKey={certificatePublicKey} onClose={closeCert} />
       )}
     </div>
   );

@@ -121,7 +121,10 @@ def set_cached_scan(cache_key: str, response_data: Dict[str, Any]) -> bool:
     to_store["cached"] = True
     _mem_set(cache_key, to_store)
     with _mem_lock:
-        _known_misses.discard(cache_key)
+        try:
+            _known_misses.discard(cache_key)
+        except AttributeError:
+            _known_misses.pop(cache_key, None)
 
     def _persist_cache_entry() -> None:
         try:

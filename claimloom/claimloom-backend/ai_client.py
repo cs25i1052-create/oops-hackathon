@@ -36,7 +36,7 @@ PROVIDERS = [
      "vision_env": "CUSTOM_VISION_MODELS", "default_vision": ""},
 ]
 
-PER_CALL_TIMEOUT = float(os.getenv("AI_CALL_TIMEOUT", "4.5"))
+PER_CALL_TIMEOUT = float(os.getenv("AI_CALL_TIMEOUT", "12.0"))
 TOTAL_BUDGET = float(os.getenv("AI_TOTAL_TIMEOUT", "30"))
 NUDGE = "\n\nIMPORTANT: your previous reply was not valid JSON. Reply with ONE valid JSON object only. No markdown, no commentary."
 
@@ -89,11 +89,6 @@ def _configured(p: dict, vision: bool = False) -> Optional[dict]:
     else:
         raw = os.getenv(p["models_env"], p["default_models"])
     models = [m.strip() for m in raw.split(",") if m.strip()]
-    if not vision and p["name"] == "groq":
-        # This small instant model is the lowest-latency Groq route; keep it
-        # ahead of a legacy .env override that starts with a larger model.
-        fast_model = "llama-3.1-8b-instant"
-        models = [fast_model] + [model for model in models if model != fast_model]
     if not models:
         return None
     return {**p, "key": key, "base_url": base.rstrip("/"), "models": models}

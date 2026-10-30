@@ -1,17 +1,21 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { verifyScan } from "../lib/client";
 import type { ScanResponse } from "../lib/schema";
 import { btnGhost, btnPrimary, Role } from "../lib/ui";
 
 interface Props {
   scan: ScanResponse;
   role: Role;
-  signature: { value: string; live: boolean };
+  signature: { value: string; live: boolean; entry_hash?: string; text_sha256?: string; prev_hash?: string; reviewer?: string };
+  publicKey?: string | null;
   onClose: () => void;
 }
 
-export default function CertificateModal({ scan, role, signature, onClose }: Props) {
+export default function CertificateModal({ scan, role, signature, publicKey, onClose }: Props) {
+  const [verification, setVerification] = useState<any>(null);
+  const [verifying, setVerifying] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -61,13 +65,19 @@ export default function CertificateModal({ scan, role, signature, onClose }: Pro
               </code>
             </dd>
           </div>
+          {signature.entry_hash && <div><dt className="font-semibold">Entry hash</dt><dd><code className="break-all">{signature.entry_hash}</code></dd></div>}
+          {signature.text_sha256 && <div><dt className="font-semibold">Text SHA-256</dt><dd><code className="break-all">{signature.text_sha256}</code></dd></div>}
+          {signature.prev_hash && <div><dt className="font-semibold">Previous hash</dt><dd><code className="break-all">{signature.prev_hash}</code></dd></div>}
+          {signature.reviewer && <div><dt className="font-semibold">Reviewer</dt><dd>{signature.reviewer}</dd></div>}
+          {publicKey && <div><dt className="font-semibold">Public key</dt><dd><code className="break-all">{publicKey}</code></dd></div>}
         </dl>
         <p className={`text-xs font-medium ${signature.live ? "text-emerald-700" : "text-amber-700"}`}>
           {signature.live
             ? "Signature issued by the live engine."
-            : "Demo signature. This scan is not stored on the backend, so this is not a real signature."}
+            : "No live signature is available for this offline scan."}
         </p>
         <div className="flex justify-end gap-2 print:hidden">
+          <button type="button" disabled={verifying || !signature.live} onClick={async () => { setVerifying(true); try { setVerification(await verifyScan(scan.scan_id)); } catch (e) { setVerification({ error: e instanceof Error ? e.message : "Verification failed" }); } finally { setVerifying(false); } }} className={btnGhost}>{verifying ? "Verifying…" : "Verify signature"}</button>
           <button type="button" onClick={onClose} className={btnGhost}>
             Close
           </button>
@@ -75,6 +85,7 @@ export default function CertificateModal({ scan, role, signature, onClose }: Pro
             Print or save as PDF
           </button>
         </div>
+        {verification && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs" aria-live="polite">{verification.error || <>Valid: {String(verification.valid)} · Tampered: {String(verification.tampered)} · Chain valid: {String(verification.chain_valid)} · Entry hash: <code className="break-all">{verification.certificate?.entry_hash || "—"}</code></>}</div>}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { memo, useState } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { Card } from "./Common";
 import { btnDark, btnGhost, inputCls, Role } from "../lib/ui";
+import { API_BASE, getAuthHeaders } from "../lib/api";
 
 interface Props {
   role: Role;
@@ -11,6 +12,8 @@ interface Props {
   isApproved: boolean;
   onApprove: () => void;
   onViewCertificate: () => void;
+  scanId?: string;
+  onReaudit?: (needed: boolean, note?: string | null) => void;
 }
 
 interface Comment {
@@ -20,24 +23,40 @@ interface Comment {
   time: string;
 }
 
-function SignoffCard({ role, hint, canApprove, isApproved, onApprove, onViewCertificate }: Props) {
-  const [comments, setComments] = useState<Comment[]>([
-    {
-      id: "c1",
-      author: "Sample Senior Legal Reviewer",
-      text: "Please update the Pro Plan price to $29/month and remove the absolute guarantee before final sign-off.",
-      time: "5 mins ago",
-    },
-  ]);
+function SignoffCard({ role, hint, canApprove, isApproved, onApprove, onViewCertificate, scanId, onReaudit }: Props) {
+  const [comments, setComments] = useState<Comment[]>([]);
   const [draft, setDraft] = useState("");
 
-  const post = () => {
+  useEffect(() => {
+    if (!scanId) { setComments([]); return; }
+    let alive = true;
+    const poll = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch(`${API_BASE}/api/scans/${encodeURIComponent(scanId)}/activity`, { headers: getAuthHeaders() });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!alive) return;
+        setComments((data.activity || []).filter((item: any) => item.type === "comment").map((item: any) => ({ id: String(item.comment_id || `${item.created_at}-${item.author_name}`), author: `${item.author_name} (${item.author_role})`, text: item.comment_text, time: item.created_at })));
+        onReaudit?.(Boolean(data.reaudit?.needed), data.reaudit?.note);
+      } catch { /* retry on the next poll */ }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [scanId, onReaudit]);
+
+  const post = async () => {
     if (!draft.trim()) return;
-    setComments((prev) => [
-      ...prev,
-      { id: `c_${Date.now()}`, author: `${role} (you)`, text: draft.trim(), time: "Just now" },
-    ]);
-    setDraft("");
+    if (!scanId) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/scans/${encodeURIComponent(scanId)}/comments`, { method: "POST", headers: getAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ comment_text: draft.trim() }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Comment could not be posted");
+      const c = data.comment;
+      setComments((prev) => [...prev, { id: String(c.comment_id || Date.now()), author: `${c.author_name} (${c.author_role})`, text: c.comment_text, time: c.created_at }]);
+      setDraft("");
+    } catch (e) { window.alert(e instanceof Error ? e.message : "Comment could not be posted"); }
   };
 
   return (
@@ -68,6 +87,7 @@ function SignoffCard({ role, hint, canApprove, isApproved, onApprove, onViewCert
           Review thread ({comments.length})
         </summary>
         <div className="mt-3 max-h-44 space-y-2 overflow-y-auto">
+          {comments.length === 0 && <p className="text-xs text-slate-500">No review comments yet on this scan.</p>}
           {comments.map((c) => (
             <div key={c.id} className="rounded-lg bg-slate-50 p-3 text-xs">
               <div className="mb-0.5 flex justify-between font-semibold text-slate-700">
@@ -83,12 +103,12 @@ function SignoffCard({ role, hint, canApprove, isApproved, onApprove, onViewCert
             type="text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && post()}
+            onKeyDown={(e) => e.key === "Enter" && void post()}
             placeholder={`Add a note as ${role}`}
             aria-label="Review note"
             className={inputCls}
           />
-          <button type="button" onClick={post} className={btnDark}>
+          <button type="button" onClick={() => void post()} className={btnDark}>
             Post
           </button>
         </div>

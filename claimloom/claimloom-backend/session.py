@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from typing import Callable, Optional
 
@@ -17,7 +18,8 @@ from pydantic import BaseModel, Field
 
 router = APIRouter()
 
-SESSION_SECRET = os.getenv("SESSION_SECRET", "claimloom-round3-hackathon-hmac-secret-2026")
+_database_url = os.getenv("DATABASE_URL", "")
+SESSION_SECRET = os.getenv("SESSION_SECRET") or (hashlib.sha256(_database_url.encode()).hexdigest() if _database_url else secrets.token_hex(32))
 TOKEN_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(7 * 24 * 3600)))  # 7 days default
 
 VALID_ROLES = {

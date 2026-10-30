@@ -15,7 +15,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
 
 export async function pingHealth(ms = 6000): Promise<boolean> {
   try {
-    const res = await fetchWithTimeout(`${API_BASE}/health`, {}, ms);
+    const res = await fetchWithTimeout(`${API_BASE}/ping`, {}, ms);
     return res.ok;
   } catch {
     return false;
@@ -68,26 +68,41 @@ export async function fetchScan(scanId: string): Promise<ScanResponse> {
 
 export async function approveScan(
   scanId: string,
-  role: string
-): Promise<{ signature: string | null; error: string | null }> {
+  role: string,
+  textSnapshot?: string
+): Promise<{ approval: any; public_key: string | null; error: string | null }> {
   try {
+    let versionNo: number | undefined;
+    if (textSnapshot !== undefined) {
+      const versionRes = await fetchWithTimeout(`${API_BASE}/api/scans/${encodeURIComponent(scanId)}/versions`, { method: "POST", headers: getAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ text_snapshot: textSnapshot }) }, 15000);
+      if (!versionRes.ok) return { approval: null, public_key: null, error: `Version save failed (HTTP ${versionRes.status})` };
+      const versionData = await versionRes.json();
+      versionNo = versionData.version_no;
+    }
     const res = await fetchWithTimeout(
       `${API_BASE}/api/scans/${encodeURIComponent(scanId)}/approve`,
       {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ reviewer: role, role }),
+        body: JSON.stringify({ reviewer: role, role, ...(versionNo ? { version_no: versionNo } : {}) }),
       },
       15000
     );
-    if (!res.ok) return { signature: null, error: `HTTP Error ${res.status}` };
-    const data = (await res.json()) as { signature?: string };
-    return data.signature
-      ? { signature: data.signature, error: null }
-      : { signature: null, error: "The server did not return a signature" };
+    if (!res.ok) return { approval: null, public_key: null, error: `HTTP Error ${res.status}` };
+    const data = await res.json();
+    const approval = data.approval || data;
+    return approval.signature
+      ? { approval, public_key: data.public_key || null, error: null }
+      : { approval: null, public_key: null, error: "The server did not return a signature" };
   } catch (e) {
-    return { signature: null, error: e instanceof Error ? e.message : "Request failed" };
+    return { approval: null, public_key: null, error: e instanceof Error ? e.message : "Request failed" };
   }
+}
+
+export async function verifyScan(scanId: string) {
+  const response = await fetchWithTimeout(`${API_BASE}/api/verify/${encodeURIComponent(scanId)}`, { headers: getAuthHeaders() });
+  if (!response.ok) throw new Error(`Verification failed (HTTP ${response.status})`);
+  return response.json();
 }
 
 export const pageImageUrl = (scanId: string, page: number) =>

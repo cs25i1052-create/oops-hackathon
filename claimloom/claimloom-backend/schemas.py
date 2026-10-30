@@ -143,6 +143,6 @@ def score_issues(issues: List[Issue], ai_ok: bool = True):
         total += w
     pillars = PillarScores(**{p: max(0, 100 - d) for p, d in deductions.items()})
     overall = max(0, 100 - total)
-    has_high = any(i.severity == "High" for i in issues)
-    status = "approved" if (overall >= 88 and not has_high and ai_ok) else "needs_review"
+    has_blocker = any(i.severity in ("High", "Medium") for i in issues)
+    status = "approved" if (overall >= 90 and not has_blocker and ai_ok) else "needs_review"
     return overall, pillars, status

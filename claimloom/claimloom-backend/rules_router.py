@@ -79,7 +79,7 @@ class RuleCreate(BaseModel):
 @router.post("/api/rules")
 def create_custom_rule(
     req: RuleCreate,
-    session: SessionUser = Depends(require_role("Reviewer", "Admin", "Creator")),
+    session: SessionUser = Depends(require_role("Admin")),
 ):
     _validate_regex(req.regex_pattern)
     rules, _, _ = db.get_vault()
@@ -229,12 +229,16 @@ def _contains_nested_repeat_or_branch(nodes: Any, inside_repeat: bool = False) -
 def _validate_regex(pattern: Optional[str]) -> Optional[str]:
     if pattern is None or pattern == "":
         return None
+    if len(pattern.strip()) < 3:
+        raise HTTPException(status_code=422, detail="Regex pattern is too short/broad (min 3 chars).")
     if len(pattern) > MAX_PATTERN_LENGTH:
         raise HTTPException(status_code=422, detail=f"Regex exceeds {MAX_PATTERN_LENGTH} characters.")
     if re.search(r"\\[1-9]|\(\?P=", pattern):
         raise HTTPException(status_code=422, detail="Regex backreferences are not allowed in editable brand rules.")
     try:
         compiled = re.compile(pattern)
+        if compiled.search("ClaimLoom Creators build compliant enterprise assets."):
+            raise HTTPException(status_code=422, detail="Regex is overly broad and flags clean baseline copy.")
         import re._parser as parser
         parsed = parser.parse(pattern, 0)
         if _contains_nested_repeat_or_branch(parsed):

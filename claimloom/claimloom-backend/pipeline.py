@@ -22,7 +22,8 @@ from schemas import EvidenceCitation, IssueItem, normalize_channel
 # ------------------------------------------------------------------ Devraj's RAG Verifier Interface + Safe Stub
 try:
     import rag_verifier as _rag_module
-except ImportError:
+except Exception as e:
+    print(f"[pipeline] rag_verifier import failed (using fallback): {e}")
     _rag_module = None
 
 
@@ -50,9 +51,13 @@ def record_evidence(scan_id: str, results: dict) -> None:
 def reaudit_changed(chunk_ids: list[int]) -> list[str]:
     """Calls Devraj's rag_verifier.reaudit_changed or returns empty list."""
     affected: list[str] = []
-    if _rag_module and hasattr(_rag_module, "reaudit_changed"):
+    fn = (
+        getattr(_rag_module, "reaudit_changed", None)
+        or getattr(_rag_module, "reaudit_changed_chunks", None)
+    ) if _rag_module else None
+    if fn:
         try:
-            affected = [str(scan_id) for scan_id in (_rag_module.reaudit_changed(chunk_ids) or [])]
+            affected = [str(scan_id) for scan_id in (fn(chunk_ids) or [])]
         except Exception as e:
             print(f"[pipeline] rag_verifier.reaudit_changed error: {e}")
     if not affected:

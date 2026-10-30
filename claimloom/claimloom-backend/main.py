@@ -167,6 +167,8 @@ def save_scan_persistence(
                        VALUES (%s, 1, %s, %s, %s) ON CONFLICT DO NOTHING;""",
                     (scan_id, redacted_text or "", int(scan_resp.get("readiness_score", 100)), actor_name or "Creator"),
                 )
+                cur.execute("DELETE FROM public.scan_documents WHERE created_at < NOW() - INTERVAL '24 hours';")
+                cur.execute("DELETE FROM public.scan_cache WHERE created_at < NOW() - INTERVAL '24 hours';")
             conn.commit()
         except Exception as exc:
             if conn:
