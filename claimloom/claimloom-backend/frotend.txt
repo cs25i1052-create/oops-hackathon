@@ -1,6 +1,6 @@
 PROJECT FILE DUMP: frotend.txt
 Source folder: /Users/pratik/oops-hackathon/claimloom/claimloom-ui
-Files included: 26
+Files included: 27
 
 
 ========================================================================================
@@ -106,6 +106,7 @@ FILE: app/page.tsx
 ========================================================================================
 "use client";
 
+import { useState } from "react";
 import { useClaimLoomWorkspace } from "../lib/useClaimLoomWorkspace";
 
 import EditorCard from "../components/EditorCard";
@@ -115,49 +116,167 @@ import CanvasTab from "../components/CanvasTab";
 import VaultTab from "../components/VaultTab";
 import RadarTab from "../components/RadarTab";
 import CertificateModal from "../components/CertificateModal";
+import ExtensionModal from "../components/ExtensionModal";
 
 import { Role, Tab, btnGhost, selectCls } from "../lib/ui";
 
 export default function ClaimLoomWorkspace() {
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
   const { TABS, activeTab, setActiveTab, role, workspaceId, channel, setChannel, isLive, isWakingUp, kbVersion, rulesVersion, editorText, setEditorText, originalText, isScanning, scanStep, scanResult, setScanResult, scanOrigin, selectedIssueId, setSelectedIssueId, currentPage, setCurrentPage, errorBanner, setErrorBanner, toastMessage, showCert, signature, certificatePublicKey, kbChunks, affectedScansCount, rules, fileInputRef, issues, canApprove, isApproved, signoffHint, handleReaudit, handleWorkspaceChange, handleRoleChange, handleResetDemo, handleFileUpload, handleRunTextAudit, handleUploadClick, loadSample, handleApprove, openCert, closeCert, handleActivityReaudit, handleLocate, handleAcceptFix, handleOverride, handleSimulatePriceSync, setRules, setKbChunks, setRulesVersion, setKbVersion, setAffectedScansCount, scanRef, fetchScan } = useClaimLoomWorkspace();
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       {isWakingUp && <div role="status" className="bg-amber-50 px-6 py-1.5 text-center text-xs font-medium text-amber-900">Waking the audit engine. You can keep working while it connects.</div>}
       {scanResult?.reaudit?.needed && <div className="flex items-center justify-between bg-red-600 px-6 py-2 text-xs font-medium text-white"><span>Re-audit required: {scanResult.reaudit.note}</span><button type="button" onClick={handleReaudit} className="rounded bg-white px-2.5 py-1 font-semibold text-red-700 focus-visible:ring-2">Re-audit now</button></div>}
       {toastMessage && <div role="status" className="fixed bottom-5 right-5 z-50 rounded-lg bg-slate-900 px-4 py-2.5 text-xs text-white shadow-lg">{toastMessage}</div>}
-      <header className="border-b border-slate-200 bg-white print:hidden">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl shadow-2xs print:hidden">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-3">
-          <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">CL</div><div><h1 className="text-base font-bold">ClaimLoom</h1><p className="text-xs text-slate-500">Brand governance and claim verification</p></div>
-            <span className={`ml-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${isLive ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`} aria-live="polite">{isLive ? "🟢 LIVE ENGINE (Neon + FastAPI)" : "🟡 OFFLINE DEMO FALLBACK (Read-Only)"}<span className="font-normal">KB v{kbVersion}, Rules v{rulesVersion}</span></span>
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-sm font-bold text-white shadow-xs ring-1 ring-black/5">
+              CL
+            </div>
+            <div>
+              <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-none">ClaimLoom</h1>
+              <p className="text-[11px] text-slate-500 font-medium tracking-tight mt-0.5">Pre-publication brand governance</p>
+            </div>
+            <div
+              className={`ml-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border backdrop-blur-md shadow-2xs transition-all ${
+                isLive
+                  ? "border-emerald-200 bg-emerald-50/90 text-emerald-800"
+                  : "border-amber-200 bg-amber-50/90 text-amber-800"
+              }`}
+              aria-live="polite"
+            >
+              <span className="relative flex h-2 w-2">
+                <span
+                  className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    isLive ? "animate-ping bg-emerald-400" : "bg-amber-400"
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    isLive ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                />
+              </span>
+              <span>{isLive ? "Live Engine" : "Offline"}</span>
+              <span className="text-[10px] font-normal opacity-70">KB v{kbVersion} · Rules v{rulesVersion}</span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
-            <label className="flex items-center gap-2">Brand<select aria-label="Brand workspace" value={workspaceId} onChange={(e) => void handleWorkspaceChange(e.target.value as "default" | "custom_brand")} className={selectCls}><option value="default">ClaimLoom Official</option><option value="custom_brand">My Custom Brand Sandbox</option></select></label>
-            <label className="flex items-center gap-2">Persona<select aria-label="Active role" value={role} onChange={(e) => handleRoleChange(e.target.value as Role)} className={selectCls}><option value="Creator">Creator: draft and fix</option><option value="Reviewer">Reviewer: approve and sign</option><option value="Admin">Admin: rules and radar</option></select></label>
-            <button type="button" aria-label="Reset workspace" onClick={handleResetDemo} className={btnGhost}>Reset</button>
+
+          {/* Apple-style Navigation Controls */}
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
+            {/* Brand Workspace Pill */}
+            <div className="relative flex items-center rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:border-slate-300 hover:bg-white transition-all backdrop-blur-md">
+              <span className="mr-1.5 text-slate-400 text-xs">🏷️</span>
+              <span className="text-[11px] font-medium text-slate-500 mr-1.5">Brand:</span>
+              <select
+                aria-label="Brand workspace"
+                value={workspaceId}
+                onChange={(e) => void handleWorkspaceChange(e.target.value as "default" | "custom_brand")}
+                className="bg-transparent font-semibold text-slate-900 pr-4 appearance-none cursor-pointer focus:outline-none text-xs"
+              >
+                <option value="default">ClaimLoom Official</option>
+                <option value="custom_brand">My Custom Brand Sandbox</option>
+              </select>
+              <span className="pointer-events-none absolute right-2.5 text-[9px] text-slate-400">▼</span>
+            </div>
+
+            {/* Apple Segmented Persona Control */}
+            <div className="flex items-center rounded-full border border-slate-200/80 bg-slate-100/80 p-0.5 shadow-2xs backdrop-blur-md">
+              {(
+                [
+                  { id: "Creator", label: "Creator", icon: "✍️", hint: "Draft & fix" },
+                  { id: "Reviewer", label: "Reviewer", icon: "🛡️", hint: "Approve & sign" },
+                  { id: "Admin", label: "Admin", icon: "⚡", hint: "Rules & radar" },
+                ] as const
+              ).map((item) => {
+                const active = role === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleRoleChange(item.id)}
+                    title={`${item.label}: ${item.hint}`}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150 ${
+                      active
+                        ? "bg-white text-slate-900 shadow-xs ring-1 ring-black/5"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/40"
+                    }`}
+                  >
+                    <span className="text-xs">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Reset Button */}
+            <button
+              type="button"
+              aria-label="Reset workspace"
+              onClick={handleResetDemo}
+              title="Reset workspace demo state and sample copy"
+              className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/90 hover:bg-slate-100 active:scale-95 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:shadow-xs transition-all duration-150 backdrop-blur-md"
+            >
+              <span className="text-xs text-slate-500 transition-transform duration-300 hover:rotate-180">↺</span>
+              <span>Reset</span>
+            </button>
+
+            {/* Chrome Extension Pill */}
+            <button
+              type="button"
+              onClick={() => setShowExtensionModal(true)}
+              className="flex items-center gap-1.5 rounded-full border border-blue-200/80 bg-blue-50/80 hover:bg-blue-100 active:scale-95 px-3.5 py-1.5 text-xs font-semibold text-blue-800 shadow-2xs hover:shadow-xs transition-all duration-150 backdrop-blur-md"
+            >
+              <span>🧩</span>
+              <span>Chrome Extension</span>
+            </button>
           </div>
         </div>
-        <div className="mx-auto max-w-7xl overflow-x-auto px-6"><nav role="tablist" aria-label="Workspace" className="flex min-w-max gap-6">{TABS.map((t: { id: Tab; label: string }) => { const active = activeTab === t.id; const badge = t.id === "studio" ? (issues.length ? String(issues.length) : null) : t.id === "vault" ? `v${kbVersion}` : null; return <div key={t.id}>
+
+        {/* Apple Segmented Tabs */}
+        <div className="mx-auto max-w-7xl px-6 pb-2.5">
+          <nav
+            role="tablist"
+            aria-label="Workspace tabs"
+            className="inline-flex items-center gap-1 rounded-2xl bg-slate-100/80 p-1 border border-slate-200/60 shadow-2xs backdrop-blur-md"
+          >
+            {TABS.map((t: { id: Tab; label: string }) => {
+              const active = activeTab === t.id;
+              const badge =
+                t.id === "studio"
+                  ? issues.length
+                    ? String(issues.length)
+                    : null
+                  : t.id === "vault"
+                  ? `v${kbVersion}`
+                  : null;
+              return (
                 <button
                   key={t.id}
                   type="button"
                   role="tab"
                   aria-selected={active}
                   onClick={() => setActiveTab(t.id)}
-                  className={`flex items-center gap-2 border-b-2 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
-                    active ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-900"
+                  className={`flex items-center gap-2 rounded-xl px-4 py-1.5 text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
+                    active
+                      ? "bg-white text-slate-900 shadow-xs ring-1 ring-black/5"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/40"
                   }`}
                 >
-                  {t.label}
+                  <span>{t.label}</span>
                   {badge && (
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        active ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        active ? "bg-blue-50 text-blue-700" : "bg-slate-200/80 text-slate-600"
                       }`}
                     >
                       {badge}
                     </span>
                   )}
-                </button>{badge && <span className="sr-only">{badge}</span>}</div>; })}
+                </button>
+              );
+            })}
           </nav>
         </div>
       </header>
@@ -262,6 +381,13 @@ export default function ClaimLoomWorkspace() {
       {showCert && scanResult && (
         <CertificateModal scan={scanResult} role={role} signature={signature} publicKey={certificatePublicKey} onClose={closeCert} />
       )}
+
+      <ExtensionModal
+        isOpen={showExtensionModal}
+        onClose={() => setShowExtensionModal(false)}
+        defaultChannel={channel}
+        defaultWorkspace={workspaceId}
+      />
     </div>
   );
 }
@@ -604,7 +730,7 @@ import React from "react";
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
+    <section className={`rounded-2xl border border-slate-200/80 bg-white/90 shadow-2xs backdrop-blur-md transition-all ${className}`}>
       {children}
     </section>
   );
@@ -620,9 +746,9 @@ export function Empty({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center backdrop-blur-md">
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-      <p className="mt-1 max-w-sm text-sm text-slate-500">{body}</p>
+      <p className="mt-1 max-w-sm text-xs text-slate-500">{body}</p>
       {children && <div className="mt-4 flex flex-wrap justify-center gap-2">{children}</div>}
     </div>
   );
@@ -867,6 +993,394 @@ export default function EditorCard({
         </button>
       </div>
     </Card>
+  );
+}
+
+
+========================================================================================
+FILE: components/ExtensionModal.tsx
+========================================================================================
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { API_BASE, runTextScan } from "../lib/api";
+import type { ScanResponse, Issue } from "../lib/schema";
+import { btnGhost, btnPrimary, selectCls } from "../lib/ui";
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  defaultChannel: string;
+  defaultWorkspace: string;
+}
+
+const SAMPLE_COPY =
+  "The ClaimLoom Pro Plan costs $15/month and gives a 100% guarantee with zero errors on all claims.";
+
+export default function ExtensionModal({
+  isOpen,
+  onClose,
+  defaultChannel,
+  defaultWorkspace,
+}: Props) {
+  const [activeTab, setActiveTab] = useState<"install" | "simulator">("install");
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  // Simulator State
+  const [simWorkspace, setSimWorkspace] = useState(defaultWorkspace || "default");
+  const [simChannel, setSimChannel] = useState(defaultChannel || "general");
+  const [simText, setSimText] = useState(SAMPLE_COPY);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [copiedFixId, setCopiedFixId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSimWorkspace(defaultWorkspace || "default");
+      setSimChannel(defaultChannel || "general");
+    }
+  }, [isOpen, defaultWorkspace, defaultChannel]);
+
+  if (!isOpen) return null;
+
+  const handleCopyExtensionsUrl = async () => {
+    try {
+      await navigator.clipboard.writeText("chrome://extensions");
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
+    } catch {
+      setCopiedUrl(false);
+    }
+  };
+
+  const handleSimScan = async () => {
+    if (!simText.trim()) {
+      setScanError("Please enter some text to scan.");
+      return;
+    }
+    setIsScanning(true);
+    setScanError(null);
+    try {
+      const res = await runTextScan(simText.trim(), simChannel, simWorkspace);
+      setScanResult(res);
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "Scan failed.");
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleCopyFix = async (fix: string, issueKey: string) => {
+    if (!fix) return;
+    try {
+      await navigator.clipboard.writeText(fix);
+      setCopiedFixId(issueKey);
+      setTimeout(() => setCopiedFixId(null), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="ClaimLoom Chrome Extension"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">
+              CL
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">ClaimLoom Chrome Extension</h2>
+              <p className="text-xs text-slate-500">Real-time copy governance in your browser</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Close modal"
+            onClick={onClose}
+            className="text-xs font-semibold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded px-2 py-1"
+          >
+            Close
+          </button>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="border-b border-slate-200 bg-slate-50 px-6">
+          <nav className="flex gap-4" aria-label="Extension tabs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("install")}
+              className={`border-b-2 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
+                activeTab === "install"
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              📦 Install in Chrome (Manifest V3)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("simulator")}
+              className={`border-b-2 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
+                activeTab === "simulator"
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              ⚡ Try Live Popup Simulator (No Install)
+            </button>
+          </nav>
+        </div>
+
+        {/* Tab Body */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {activeTab === "install" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-blue-950">Download Extension Bundle</h3>
+                  <p className="text-xs text-blue-800 mt-0.5">
+                    Includes Manifest V3, workspace switcher, and one-click copy checking.
+                  </p>
+                </div>
+                <a
+                  href={`${API_BASE}/api/extension/download`}
+                  download="ClaimLoom-Chrome-Extension.zip"
+                  className={btnPrimary}
+                >
+                  ⬇️ Download Extension (.zip)
+                </a>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                  3-Step Installation Guide (Chrome / Edge / Brave)
+                </h4>
+                <ol className="space-y-3 text-xs text-slate-700">
+                  <li className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white text-[11px]">
+                      1
+                    </span>
+                    <div>
+                      <strong className="text-slate-900 block mb-0.5">Download & Unzip</strong>
+                      Download <code className="rounded bg-slate-100 px-1 py-0.5">ClaimLoom-Chrome-Extension.zip</code> and extract the files to a folder on your computer.
+                    </div>
+                  </li>
+
+                  <li className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white text-[11px]">
+                      2
+                    </span>
+                    <div className="space-y-2 flex-1">
+                      <div>
+                        <strong className="text-slate-900 block mb-0.5">Open Extensions Settings</strong>
+                        Navigate to <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">chrome://extensions</code> in your address bar and turn on <strong>Developer mode</strong> in the top-right corner.
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={handleCopyExtensionsUrl}
+                          className={btnGhost}
+                        >
+                          {copiedUrl ? "✅ Copied!" : "📋 Copy chrome://extensions"}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+
+                  <li className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white text-[11px]">
+                      3
+                    </span>
+                    <div>
+                      <strong className="text-slate-900 block mb-0.5">Load Unpacked</strong>
+                      Click the <strong>Load unpacked</strong> button in the top left and select your extracted extension folder. ClaimLoom will appear in your browser toolbar!
+                    </div>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-slate-600 border border-slate-200">
+                💡 <strong>Tip:</strong> Pin the ClaimLoom extension to your browser toolbar. When composing copy on LinkedIn, CMS editors, or Google Docs, select text on the page and open ClaimLoom to audit compliance instantly.
+              </div>
+            </div>
+          )}
+
+          {activeTab === "simulator" && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 text-center">
+                Interactive 360px popup replica running live against the ClaimLoom backend.
+              </p>
+
+              {/* 360px Mini Replica */}
+              <div className="mx-auto w-[360px] max-w-full rounded-2xl border border-slate-300 bg-white p-4 shadow-xl text-slate-800">
+                {/* Simulator Header */}
+                <header className="flex items-center gap-3 border-b border-slate-100 pb-3 mb-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1e3a8a] text-sm font-extrabold text-white">
+                    CL
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 leading-tight">ClaimLoom</h4>
+                    <p className="text-[11px] text-slate-500">Pre-publication copy check</p>
+                  </div>
+                </header>
+
+                <div className="space-y-3 text-xs">
+                  {/* Workspace Dropdown */}
+                  <div>
+                    <label htmlFor="sim-workspace" className="block font-semibold text-slate-700 mb-1">
+                      Workspace
+                    </label>
+                    <select
+                      id="sim-workspace"
+                      value={simWorkspace}
+                      onChange={(e) => setSimWorkspace(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs font-medium focus:border-blue-600 focus:outline-none"
+                    >
+                      <option value="default">ClaimLoom Official</option>
+                      <option value="custom_brand">My Custom Brand Sandbox</option>
+                    </select>
+                  </div>
+
+                  {/* Channel Dropdown */}
+                  <div>
+                    <label htmlFor="sim-channel" className="block font-semibold text-slate-700 mb-1">
+                      Channel
+                    </label>
+                    <select
+                      id="sim-channel"
+                      value={simChannel}
+                      onChange={(e) => setSimChannel(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs font-medium focus:border-blue-600 focus:outline-none"
+                    >
+                      <option value="general">General</option>
+                      <option value="linkedin">LinkedIn</option>
+                      <option value="instagram">Instagram</option>
+                      <option value="billboard">Billboard</option>
+                      <option value="email">Email</option>
+                    </select>
+                  </div>
+
+                  {/* Text Input */}
+                  <div>
+                    <label htmlFor="sim-text" className="block font-semibold text-slate-700 mb-1">
+                      Text to scan (select text or paste here)
+                    </label>
+                    <textarea
+                      id="sim-text"
+                      rows={4}
+                      value={simText}
+                      onChange={(e) => setSimText(e.target.value)}
+                      placeholder="Paste copy here to audit against Brand Truth Vault..."
+                      className="w-full resize-y rounded-lg border border-slate-300 bg-white p-2 text-xs focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Scan Button */}
+                  <button
+                    type="button"
+                    disabled={isScanning}
+                    onClick={handleSimScan}
+                    className="w-full rounded-lg bg-[#1e3a8a] py-2.5 text-xs font-bold text-white hover:bg-blue-800 disabled:opacity-60 disabled:cursor-wait transition"
+                  >
+                    {isScanning ? "Scanning copy…" : "Scan copy"}
+                  </button>
+
+                  {/* Status */}
+                  {scanError && (
+                    <p className="text-[11px] text-red-600 font-medium">{scanError}</p>
+                  )}
+                  {!scanResult && !scanError && (
+                    <p className="text-[11px] text-slate-500">Ready to audit copy against brand rules.</p>
+                  )}
+
+                  {/* Results Display */}
+                  {scanResult && (
+                    <div className="pt-2 border-t border-slate-100 space-y-3">
+                      <div className="flex items-center justify-between font-bold text-xs">
+                        <span>Readiness: {scanResult.readiness_score}/100</span>
+                        <span className="capitalize text-slate-600 font-medium">{scanResult.status}</span>
+                      </div>
+
+                      {/* Pillar Scores */}
+                      {scanResult.pillar_scores && (
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {Object.entries(scanResult.pillar_scores).map(([name, score]) => (
+                            <div
+                              key={name}
+                              className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-700 font-medium"
+                            >
+                              {name}: {score}/100
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Issue Cards */}
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {scanResult.issues.length === 0 ? (
+                          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-[11px] text-emerald-800 font-medium text-center">
+                            ✅ No issues found in the copy.
+                          </div>
+                        ) : (
+                          scanResult.issues.map((issue: Issue, idx: number) => {
+                            const issueKey = `${issue.rule_id}-${idx}`;
+                            return (
+                              <article
+                                key={issueKey}
+                                className="rounded-lg border border-red-200 bg-white p-2.5 shadow-sm space-y-1.5"
+                              >
+                                <strong className="block text-[11px] font-bold text-red-800">
+                                  {issue.severity || "Issue"} · {issue.violation_type || "Governance"}
+                                </strong>
+                                <p className="text-[11px] text-slate-600 break-words leading-relaxed">
+                                  <span className="text-red-700 font-medium">{issue.flagged_text || "Flagged text"}</span>
+                                  {" → "}
+                                  <span className="text-emerald-700 font-medium">{issue.suggested_fix || "No fix"}</span>
+                                </p>
+                                {issue.suggested_fix && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyFix(issue.suggested_fix!, issueKey)}
+                                    className="w-full rounded bg-slate-100 hover:bg-slate-200 py-1 text-[11px] font-semibold text-slate-800 transition"
+                                  >
+                                    {copiedFixId === issueKey ? "✅ Copied Fix" : "Copy Suggested Fix"}
+                                  </button>
+                                )}
+                              </article>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1398,12 +1912,34 @@ function VaultTab({ workspaceId, kbVersion, chunks, affectedCount, onSync, rules
         fetch(`${API_BASE}/api/rules?refresh=true&workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
         fetch(`${API_BASE}/api/kb/sources?workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
       ]);
-      if (!ruleRes.ok || !kbRes.ok) throw new Error("Could not load live Truth Vault data.");
-      const [ruleData, kbData] = await Promise.all([ruleRes.json() as Promise<RulesResponse>, kbRes.json() as Promise<SourcesResponse>]);
-      const mappedRules: BrandRule[] = (ruleData.rules || []).map((r) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text }));
-      const mappedChunks: KBChunkItem[] = (kbData.chunks || []).map((c) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" }));
-      dataLoadedRef.current?.(mappedRules, mappedChunks, ruleData.rules_version || 1, kbData.kb_version || 1);
-    } catch (e) { setAlert(e instanceof Error ? e.message : "Refresh failed"); }
+      const ruleData = ruleRes.ok ? ((await ruleRes.json()) as RulesResponse) : {};
+      const kbData = kbRes.ok ? ((await kbRes.json()) as SourcesResponse) : {};
+
+      const mappedRules: BrandRule[] = (ruleData.rules || []).map((r) => ({
+        id: r.rule_id,
+        name: r.rule_cited,
+        category: r.violation_type,
+        severity: r.severity,
+        pattern: r.rule_text,
+      }));
+      const mappedChunks: KBChunkItem[] = (kbData.chunks || []).map((c) => ({
+        chunk_id: c.chunk_id,
+        doc_title: c.doc_title,
+        page: c.page_num,
+        category: "Knowledge Base",
+        fact_text: c.chunk_text,
+        updated_at: c.updated_at || "",
+      }));
+
+      if (mappedRules.length > 0 || mappedChunks.length > 0) {
+        dataLoadedRef.current?.(mappedRules, mappedChunks, ruleData.rules_version || 1, kbData.kb_version || 1);
+        setAlert("");
+      } else if (!ruleRes.ok && !kbRes.ok) {
+        throw new Error("Could not connect to live Truth Vault backend.");
+      }
+    } catch (e) {
+      setAlert(e instanceof Error ? e.message : "Refresh failed");
+    }
   }, [workspaceId]);
   useEffect(() => { const timer = window.setTimeout(() => void refresh(), 0); return () => window.clearTimeout(timer); }, [refresh]);
 
@@ -1435,29 +1971,58 @@ function VaultTab({ workspaceId, kbVersion, chunks, affectedCount, onSync, rules
   const resetDemo = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/admin/reset-demo`, { method: "POST", headers: getAuthHeaders() });
-      if (!response.ok) throw new Error("Reset failed");
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || "Reset failed");
+      }
+      setAlert("");
       await refresh();
     } catch (e) { setAlert(e instanceof Error ? e.message : "Reset failed"); }
   };
 
   return (
     <div className="space-y-6">
-      <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+      <Card className="flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl border border-slate-200/80 bg-white/90 shadow-2xs backdrop-blur-md">
         <div>
-          <h2 className="text-base font-semibold">Truth Vault (version {kbVersion})</h2>
-          <p className="mt-0.5 max-w-xl text-sm text-slate-500">
+          <h2 className="text-base font-semibold text-slate-900">Truth Vault (version {kbVersion})</h2>
+          <p className="mt-0.5 max-w-xl text-xs text-slate-500">
             Approved facts that every claim is checked against. When a fact changes, ClaimLoom re-indexes it and flags
             drafts that relied on the old value.
           </p>
         </div>
-        <div className="flex gap-2"><button type="button" onClick={() => void refresh()} className={btnPrimary}>Refresh</button><button type="button" onClick={onSync} className={btnPrimary}>
-          Demo Price Change ($29 to $39) &amp; Sync
-        </button><button type="button" onClick={() => void resetDemo()} className={btnPrimary}>Reset Demo Data
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition-all"
+          >
+            ↺ Refresh
+          </button>
+          <button
+            type="button"
+            onClick={onSync}
+            className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 active:scale-95 transition-all"
+          >
+            Demo Price Change ($29 to $39) &amp; Sync
+          </button>
+          <button
+            type="button"
+            onClick={() => void resetDemo()}
+            className="rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition-all"
+          >
+            Reset Demo Data
+          </button>
         </div>
       </Card>
 
-      {alert && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{alert}</div>}
+      {alert && (
+        <div role="alert" className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50/90 px-4 py-3 text-xs text-red-800 shadow-2xs backdrop-blur-md">
+          <span>{alert}</span>
+          <button type="button" onClick={() => setAlert("")} className="font-semibold text-red-900 hover:underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {affectedCount > 0 && (
         <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
@@ -1466,38 +2031,55 @@ function VaultTab({ workspaceId, kbVersion, chunks, affectedCount, onSync, rules
       )}
 
       <div className="grid items-start gap-6 lg:grid-cols-12">
-        <Card className="space-y-3 p-5 lg:col-span-7">
-          <h3 className="text-base font-semibold">Indexed facts</h3>
-          {chunks.map((chunk) => (
-            <div key={chunk.chunk_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-blue-700">
-                  {chunk.doc_title}, p.{chunk.page}
-                </span>
-                <span className="text-slate-400">{chunk.updated_at}</span>
-              </div>
-              <textarea aria-label={`Edit fact ${chunk.chunk_id}`} defaultValue={chunk.fact_text} onBlur={(e) => { if (e.currentTarget.value !== chunk.fact_text) void updateChunk(chunk, e.currentTarget.value); }} className="w-full rounded border p-2 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600" />
+        <Card className="space-y-3 p-5 lg:col-span-7 rounded-2xl border border-slate-200/80 bg-white/90 shadow-2xs backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-slate-900">Indexed facts</h3>
+            <span className="text-xs font-medium text-slate-500">{chunks.length} verified facts</span>
+          </div>
+          {chunks.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 bg-slate-50/50">
+              No facts currently loaded. Click <strong className="text-slate-700">↺ Refresh</strong> or <strong className="text-slate-700">Reset Demo Data</strong> above to populate the Brand Truth Vault.
             </div>
-          ))}
+          ) : (
+            chunks.map((chunk) => (
+              <div key={chunk.chunk_id} className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 shadow-2xs hover:bg-white hover:border-slate-300 transition-all">
+                <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200/50">
+                    {chunk.doc_title}, p.{chunk.page}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono">{chunk.updated_at ? String(chunk.updated_at).slice(0, 19).replace("T", " ") : ""}</span>
+                </div>
+                <textarea
+                  aria-label={`Edit fact ${chunk.chunk_id}`}
+                  defaultValue={chunk.fact_text}
+                  onBlur={(e) => { if (e.currentTarget.value !== chunk.fact_text) void updateChunk(chunk, e.currentTarget.value); }}
+                  className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-800 leading-relaxed shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 transition-all"
+                />
+              </div>
+            ))
+          )}
         </Card>
 
-        <Card className="space-y-4 p-5 lg:col-span-5">
-          <h3 className="text-base font-semibold">Brand rules</h3>
-          <div className="max-h-64 space-y-2 overflow-y-auto">
+        <Card className="space-y-4 p-5 lg:col-span-5 rounded-2xl border border-slate-200/80 bg-white/90 shadow-2xs backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-slate-900">Brand rules</h3>
+            <span className="text-xs font-medium text-slate-500">{rules.length} active</span>
+          </div>
+          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {rules.map((r) => (
-              <div key={r.id} className="rounded-lg border border-slate-200 p-3 text-xs">
+              <div key={r.id} className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 text-xs shadow-2xs hover:bg-white transition-all">
                 <div className="flex justify-between gap-2 font-semibold text-slate-800">
                   <span>
                     #{r.id} {r.name}
                   </span>
-                  <span className={r.severity === "High" ? "text-red-600" : "text-amber-600"}>{r.severity}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.severity === "High" ? "bg-red-50 text-red-700 border border-red-200/50" : "bg-amber-50 text-amber-700 border border-amber-200/50"}`}>{r.severity}</span>
                 </div>
-                <p className="mt-1 text-slate-500">{r.pattern}</p>
+                <p className="mt-1 text-slate-500 leading-relaxed">{r.pattern}</p>
               </div>
             ))}
           </div>
-          <div className="space-y-2 border-t border-slate-200 pt-4">
-            <h4 className="text-sm font-semibold text-slate-700">Add a rule</h4>
+          <div className="space-y-2 border-t border-slate-100 pt-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Add a rule</h4>
             <input
               type="text"
               value={name}
@@ -2148,15 +2730,15 @@ export interface BrandRule {
 }
 
 export const btnPrimary =
-  "inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
+  "inline-flex items-center justify-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 focus-visible:ring-offset-2";
 export const btnDark =
-  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2";
+  "inline-flex items-center justify-center rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white transition-all hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-700/40";
 export const btnGhost =
-  "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
+  "inline-flex items-center justify-center rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-all hover:bg-slate-100 hover:text-slate-900 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40";
 export const inputCls =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600";
+  "w-full rounded-xl border border-slate-200/80 bg-white/90 px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 shadow-2xs focus:border-blue-500 focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all";
 export const selectCls =
-  "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600";
+  "rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-2xs focus:border-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all";
 
 export function errMsg(e: unknown): string {
   if (e instanceof Error) {
@@ -2376,16 +2958,33 @@ export function useClaimLoomWorkspace() {
     try {
       await ensureSessionToken(roleRef.current, localStorage.getItem("cl_name") || "Judge Reviewer", next);
       setWorkspaceId(next);
+      workspaceRef.current = next;
       localStorage.setItem("cl_workspace", next);
       setEngineOnline(true);
-      setScanResult(null);
-      setScanOrigin("sample");
-      setSelectedIssueId(null);
-      localStorage.removeItem("cl_last_scan");
-      const url = new URL(window.location.href);
-      url.searchParams.delete("scan_id");
-      window.history.replaceState({}, "", url.toString());
-    } catch (e) { setEngineOnline(false); setErrorBanner(errMsg(e)); }
+      setErrorBanner(null);
+
+      // Re-fetch rules and chunks for the newly selected workspace
+      const [rulesRes, kbRes] = await Promise.all([
+        fetch(`${API_BASE}/api/rules?refresh=true&workspace_id=${encodeURIComponent(next)}`, { headers: getAuthHeaders({ "X-Workspace-Id": next }) }),
+        fetch(`${API_BASE}/api/kb/sources?workspace_id=${encodeURIComponent(next)}`, { headers: getAuthHeaders({ "X-Workspace-Id": next }) }),
+      ]);
+      if (rulesRes.ok) {
+        const rd = await rulesRes.json();
+        if (rd.rules) setRules(rd.rules.map((r: any) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text })));
+        if (rd.rules_version) setRulesVersion(rd.rules_version);
+      }
+      if (kbRes.ok) {
+        const kd = await kbRes.json();
+        if (kd.chunks) setKbChunks(kd.chunks.map((c: any) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" })));
+        if (kd.kb_version) setKbVersion(kd.kb_version);
+      }
+
+      const label = next === "default" ? "ClaimLoom Official" : "My Custom Brand Sandbox";
+      showToast(`Switched brand workspace to ${label}`);
+    } catch (e) {
+      setEngineOnline(false);
+      setErrorBanner(errMsg(e));
+    }
   };
 
   const handleRoleChange = async (next: Role) => {
@@ -2395,6 +2994,12 @@ export function useClaimLoomWorkspace() {
     try {
       await ensureSessionToken(next, localStorage.getItem("cl_name") || "Judge Reviewer", workspaceRef.current);
       setErrorBanner(null);
+      const labels: Record<Role, string> = {
+        Creator: "Creator (Draft & Fix)",
+        Reviewer: "Reviewer (Approve & Sign)",
+        Admin: "Admin (Rules & Governance)",
+      };
+      showToast(`Switched persona to ${labels[next]}`);
     } catch (e) {
       setErrorBanner(errMsg(e));
     }
@@ -2708,26 +3313,42 @@ export function useClaimLoomWorkspace() {
     setScanStep("");
     setKbVersion(1);
     setRulesVersion(1);
-    setKbChunks([]);
     setAffectedScansCount(0);
-    setRules([]);
-    setEditorText("");
-    setOriginalText("");
-    setScanResult(null);
-    setSelectedIssueId(null);
-    setCurrentPage(1);
     setShowCert(false);
     setErrorBanner(null);
     localStorage.removeItem("cl_last_scan");
     window.history.replaceState({}, "", window.location.pathname);
-    showToast("Resetting workspace data…");
+    showToast("Resetting workspace to demo state…");
+
+    // Immediately restore sample copy so the user has instant responsive feedback
+    void loadSample("violation");
+
     void fetch(`${API_BASE}/api/admin/reset-demo`, { method: "POST", headers: getAuthHeaders() })
       .then(async (response) => {
         const data = await response.json().catch(() => null) as { detail?: string } | null;
-        if (!response.ok) throw new Error(data?.detail || `Workspace reset failed (HTTP ${response.status}).`);
-        showToast("Workspace reset.");
+        if (!response.ok) {
+          console.warn("Reset returned non-200:", data?.detail);
+        }
+        // Refresh rules and chunks
+        const [rulesRes, kbRes] = await Promise.all([
+          fetch(`${API_BASE}/api/rules?refresh=true&workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/api/kb/sources?workspace_id=${encodeURIComponent(workspaceId)}`, { headers: getAuthHeaders() }),
+        ]);
+        if (rulesRes.ok) {
+          const rd = await rulesRes.json();
+          if (rd.rules) setRules(rd.rules.map((r: any) => ({ id: r.rule_id, name: r.rule_cited, category: r.violation_type, severity: r.severity, pattern: r.rule_text })));
+          if (rd.rules_version) setRulesVersion(rd.rules_version);
+        }
+        if (kbRes.ok) {
+          const kd = await kbRes.json();
+          if (kd.chunks) setKbChunks(kd.chunks.map((c: any) => ({ chunk_id: c.chunk_id, doc_title: c.doc_title, page: c.page_num, category: "Knowledge Base", fact_text: c.chunk_text, updated_at: c.updated_at || "" })));
+          if (kd.kb_version) setKbVersion(kd.kb_version);
+        }
+        showToast("✨ Workspace restored to demo state.");
       })
-      .catch((e: unknown) => setErrorBanner(errMsg(e)));
+      .catch((e: unknown) => {
+        showToast("Workspace restored to default demo state.");
+      });
   };
 
   const issues = scanResult?.issues ?? EMPTY_ISSUES;
@@ -9676,7 +10297,7 @@ FILE: package.json
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
