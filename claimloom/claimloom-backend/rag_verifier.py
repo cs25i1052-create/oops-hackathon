@@ -128,10 +128,11 @@ def _vector_rank_map(query: str, workspace_id: str = "default") -> dict[int, int
         return {}
     try:
         resp = client.models.embed_content(
-            model="text-embedding-004",
+            model="gemini-embedding-001",
             contents=query,
+            config={"output_dimensionality": 768},
         )
-        vec = resp.embedding.values
+        vec = resp.embeddings[0].values if hasattr(resp, "embeddings") and resp.embeddings else resp.embedding.values
         workspace = (workspace_id or "default").strip() or "default"
         with conn.cursor() as cur:
             cur.execute(

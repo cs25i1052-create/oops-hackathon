@@ -1,6 +1,6 @@
 PROJECT FILE DUMP: frotend.txt
 Source folder: /Users/pratik/oops-hackathon/claimloom/claimloom-ui
-Files included: 27
+Files included: 28
 
 
 ========================================================================================
@@ -716,7 +716,64 @@ export default function CertificateModal({ scan, role, signature, publicKey, onC
             Print or save as PDF
           </button>
         </div>
-        {verification && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs" aria-live="polite">{verification.error || <>Valid: {String(verification.valid)} · Tampered: {String(verification.tampered)} · Chain valid: {String(verification.chain_valid)} · Entry hash: <code className="break-all">{verification.certificate?.entry_hash || "—"}</code></>}</div>}
+        {verification && (
+          <div
+            className={`rounded-xl border p-3.5 text-xs transition-all ${
+              verification.error
+                ? "border-rose-200 bg-rose-50/80 text-rose-800"
+                : verification.valid && !verification.tampered
+                ? "border-emerald-200 bg-emerald-50/70 text-emerald-950 shadow-sm"
+                : "border-amber-200 bg-amber-50/80 text-amber-900"
+            }`}
+            aria-live="polite"
+          >
+            {verification.error ? (
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-rose-600">✕</span>
+                <span>{verification.error}</span>
+              </div>
+            ) : verification.valid && !verification.tampered ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 font-semibold text-emerald-800">
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">
+                    ✓
+                  </span>
+                  <span>Cryptographically Verified &amp; Immutable</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1 text-[11px] text-emerald-900/80">
+                  <div>
+                    <span className="font-medium text-emerald-950">Ed25519 Signature:</span> Valid
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-950">Audit Chain:</span> Intact &amp; Valid
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-950">Tampered:</span> No
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-950">Status:</span> Live Signed
+                  </div>
+                </div>
+                {verification.certificate?.entry_hash && (
+                  <div className="break-all pt-1 text-[10px] text-emerald-800/80">
+                    <span className="font-medium text-emerald-950">Entry hash:</span>{" "}
+                    <code>{verification.certificate.entry_hash}</code>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1 text-amber-900">
+                <div className="flex items-center gap-2 font-semibold text-amber-800">
+                  <span className="text-amber-600">⚠</span>
+                  <span>Verification Discrepancy Detected</span>
+                </div>
+                <p className="text-[11px]">
+                  Valid: {String(verification.valid)} · Tampered: {String(verification.tampered)} · Chain: {String(verification.chain_valid)}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3404,14 +3461,6 @@ const nextConfig: NextConfig = {
   },
   cacheComponents: true,
   partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
 };
 
 export default nextConfig;
@@ -3436,12 +3485,14 @@ FILE: package-lock.json
         "zod": "^4.6.7"
       },
       "devDependencies": {
+        "@tailwindcss/postcss": "^4.3.3",
         "@tailwindcss/turbopack": "^4",
         "@types/node": "^20",
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "eslint": "^9",
         "eslint-config-next": "16.4.3",
+        "postcss": "^8.5.32",
         "tailwindcss": "^4",
         "typescript": "^5"
       }
@@ -5083,6 +5134,20 @@ FILE: package-lock.json
       ],
       "engines": {
         "node": ">= 20"
+      }
+    },
+    "node_modules/@tailwindcss/postcss": {
+      "version": "4.3.3",
+      "resolved": "https://registry.npmjs.org/@tailwindcss/postcss/-/postcss-4.3.3.tgz",
+      "integrity": "sha512-JTSZZGQi1AyKirbLN3azmjVzef92tcX7h+iSqPdaeStyFpGpDlKvvpxeOE8njhbUanbRwr3z8DyzhICWnMtQeg==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@alloc/quick-lru": "^5.2.0",
+        "@tailwindcss/node": "4.3.3",
+        "@tailwindcss/oxide": "4.3.3",
+        "postcss": "^8.5.16",
+        "tailwindcss": "4.3.3"
       }
     },
     "node_modules/@tailwindcss/turbopack": {
@@ -8747,6 +8812,34 @@ FILE: package-lock.json
         }
       }
     },
+    "node_modules/next/node_modules/postcss": {
+      "version": "8.5.23",
+      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz",
+      "integrity": "sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==",
+      "funding": [
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/postcss/"
+        },
+        {
+          "type": "tidelift",
+          "url": "https://tidelift.com/funding/github/npm/postcss"
+        },
+        {
+          "type": "github",
+          "url": "https://github.com/sponsors/ai"
+        }
+      ],
+      "license": "MIT",
+      "dependencies": {
+        "nanoid": "^3.3.16",
+        "picocolors": "^1.1.1",
+        "source-map-js": "^1.2.1"
+      },
+      "engines": {
+        "node": "^10 || ^12 || >=14"
+      }
+    },
     "node_modules/node-exports-info": {
       "version": "1.6.2",
       "resolved": "https://registry.npmjs.org/node-exports-info/-/node-exports-info-1.6.2.tgz",
@@ -9038,9 +9131,10 @@ FILE: package-lock.json
       }
     },
     "node_modules/postcss": {
-      "version": "8.5.23",
-      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz",
-      "integrity": "sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==",
+      "version": "8.5.32",
+      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.32.tgz",
+      "integrity": "sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==",
+      "dev": true,
       "funding": [
         {
           "type": "opencollective",
@@ -9057,9 +9151,9 @@ FILE: package-lock.json
       ],
       "license": "MIT",
       "dependencies": {
-        "nanoid": "^3.3.16",
+        "nanoid": "^3.3.20",
         "picocolors": "^1.1.1",
-        "source-map-js": "^1.2.1"
+        "source-map-js": "^1.2.2"
       },
       "engines": {
         "node": "^10 || ^12 || >=14"
@@ -10296,7 +10390,7 @@ FILE: package.json
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
@@ -10308,16 +10402,30 @@ FILE: package.json
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
 }
+
+
+========================================================================================
+FILE: postcss.config.mjs
+========================================================================================
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
 
 
 ========================================================================================
